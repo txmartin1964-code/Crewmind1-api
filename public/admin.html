@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CrewMind Admin — Lead Pipeline</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    :root{
+      --coal:#0d0f11;--slate:#1a1d23;--card:#22262e;--border:#2e333c;
+      --muted:#6b7280;--body:#c4c9d4;--heading:#f0f2f5;
+      --accent:#f59e0b;--accent-dim:rgba(245,158,11,0.12);
+      --green:#22c55e;--green-dim:rgba(34,197,94,0.12);
+      --red:#ef4444;--red-dim:rgba(239,68,68,0.12);
+      --blue:#3b82f6;--blue-dim:rgba(59,130,246,0.12);
+    }
+    body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--coal);color:var(--body);line-height:1.65;min-height:100vh}
+    nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;background:rgba(13,15,17,0.95);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .logo{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1.2rem;color:var(--heading);text-decoration:none}
+    .logo span{color:var(--accent)}
+    .nav-pill{font-size:.7rem;background:var(--accent-dim);color:var(--accent);padding:.25rem .6rem;border-radius:100px;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+
+    /* Auth gate */
+    .auth-gate{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem}
+    .auth-card{background:var(--slate);border:1px solid var(--border);border-radius:16px;padding:2.5rem;max-width:360px;width:100%;text-align:center}
+    .auth-card h2{font-family:'Space Grotesk',sans-serif;font-weight:700;color:var(--heading);margin-bottom:.5rem}
+    .auth-card p{color:var(--muted);font-size:.9rem;margin-bottom:1.5rem}
+    .auth-input{width:100%;padding:.7rem 1rem;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--heading);font-size:1rem;font-family:inherit;margin-bottom:1rem;outline:none}
+    .auth-input:focus{border-color:var(--accent)}
+    .auth-btn{width:100%;padding:.8rem;background:var(--accent);color:#000;font-family:'Space Grotesk',sans-serif;font-weight:700;border:none;border-radius:8px;cursor:pointer;font-size:.95rem}
+    .auth-error{color:#fca5a5;font-size:.85rem;margin-top:.5rem;display:none}
+
+    /* Main layout */
+    .main{display:none;padding:5rem 2rem 3rem;max-width:1200px;margin:0 auto}
+    .page-title{font-family:'Space Grotesk',sans-serif;font-size:1.7rem;font-weight:700;color:var(--heading);margin-bottom:.25rem}
+    .page-sub{color:var(--muted);font-size:.9rem;margin-bottom:2rem}
+
+    /* Tabs */
+    .tabs{display:flex;gap:.5rem;margin-bottom:2rem;flex-wrap:wrap}
+    .tab{padding:.5rem 1.1rem;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;font-size:.88rem;transition:all .2s}
+    .tab.active{background:var(--accent-dim);border-color:var(--accent);color:var(--heading)}
+    .tab:hover:not(.active){border-color:var(--border);color:var(--body)}
+
+    /* Stats */
+    .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:2rem}
+    .stat-card{background:var(--slate);border:1px solid var(--border);border-radius:12px;padding:1.25rem}
+    .stat-label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.4rem}
+    .stat-value{font-family:'Space Grotesk',sans-serif;font-size:2rem;font-weight:700;color:var(--heading)}
+    .stat-card.accent .stat-value{color:var(--accent)}
+    .stat-card.green .stat-value{color:var(--green)}
+
+    /* Table */
+    .table-wrap{background:var(--slate);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    .table-header{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--border)}
+    .table-title{font-family:'Space Grotesk',sans-serif;font-size:.9rem;font-weight:600;color:var(--heading)}
+    .filter-select{padding:.35rem .7rem;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--body);font-size:.82rem;font-family:inherit;cursor:pointer}
+    table{width:100%;border-collapse:collapse}
+    th{padding:.75rem 1rem;text-align:left;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--border)}
+    td{padding:.85rem 1rem;font-size:.88rem;border-bottom:1px solid var(--border)}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:var(--card)}
+    .badge{display:inline-flex;align-items:center;padding:.2rem .6rem;border-radius:100px;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+    .badge.new{background:var(--blue-dim);color:var(--blue);border:1px solid var(--blue)}
+    .badge.qualified{background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent)}
+    .badge.booked{background:var(--green-dim);color:var(--green);border:1px solid var(--green)}
+    .badge.disqualified{background:var(--red-dim);color:var(--red);border:1px solid var(--red)}
+    .score-bar{display:flex;align-items:center;gap:.5rem}
+    .bar{height:6px;background:var(--border);border-radius:3px;width:60px;overflow:hidden}
+    .bar-fill{height:100%;border-radius:3px;background:var(--accent)}
+    .bar-fill.high{background:var(--green)}
+    .bar-fill.low{background:var(--red)}
+    .empty-row{text-align:center;padding:2rem;color:var(--muted);font-size:.9rem}
+
+    /* Pricing table */
+    .price-input{width:90px;padding:.3rem .5rem;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--heading);font-size:.88rem;font-family:inherit;text-align:right}
+    .price-input:focus{border-color:var(--accent);outline:none}
+    .save-btn{padding:.3rem .7rem;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit}
+    .save-btn:hover{opacity:.85}
+    .saved-tick{color:var(--green);font-size:.85rem;display:none}
+
+    /* Appointments */
+    .appt-list{display:flex;flex-direction:column;gap:.75rem}
+    .appt-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;display:flex;align-items:center;gap:1.25rem}
+    .appt-date{min-width:100px}
+    .appt-date .day{font-family:'Space Grotesk',sans-serif;font-size:1.3rem;font-weight:700;color:var(--heading)}
+    .appt-date .mon{font-size:.78rem;color:var(--muted);text-transform:uppercase}
+    .appt-time{font-size:.88rem;color:var(--accent);font-weight:600}
+    .appt-info .name{font-weight:500;color:var(--heading)}
+    .appt-info .addr{font-size:.82rem;color:var(--muted)}
+    .appt-code{font-family:monospace;font-size:.8rem;background:var(--slate);padding:.2rem .5rem;border-radius:4px;color:var(--muted);margin-left:auto}
+
+    @media(max-width:900px){
+      .stats-grid{grid-template-columns:repeat(2,1fr)}
+      .main{padding:5rem 1rem 3rem}
+    }
+    @media(max-width:600px){
+      .stats-grid{grid-template-columns:1fr 1fr}
+      th,td{padding:.6rem .7rem;font-size:.8rem}
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="logo">Crew<span>Mind</span></a>
+  <div class="nav-pill">Admin</div>
+</nav>
+
+<!-- Auth gate -->
+<div class="auth-gate" id="authGate">
+  <div class="auth-card">
+    <h2>Admin Access</h2>
+    <p>Enter your admin token to access the lead pipeline dashboard.</p>
+    <input type="password" class="auth-input" id="tokenInput" placeholder="Admin token" onkeydown="if(event.key==='Enter')login()">
+    <button class="auth-btn" onclick="login()">Sign In</button>
+    <div class="auth-error" id="authError">Invalid token. Try again.</div>
+  </div>
+</div>
+
+<!-- Main Dashboard -->
+<div class="main" id="mainDash">
+  <div class="page-title">Lead Pipeline</div>
+  <div class="page-sub">30-day view · Auto-refreshes every 60s</div>
+
+  <!-- Stats -->
+  <div class="stats-grid" id="statsGrid">
+    <div class="stat-card"><div class="stat-label">Total Leads</div><div class="stat-value" id="statTotal">—</div></div>
+    <div class="stat-card accent"><div class="stat-label">Qualified</div><div class="stat-value" id="statQualified">—</div></div>
+    <div class="stat-card green"><div class="stat-label">Booked</div><div class="stat-value" id="statBooked">—</div></div>
+    <div class="stat-card"><div class="stat-label">Disqualified</div><div class="stat-value" id="statDisq">—</div></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('leads')">Leads</button>
+    <button class="tab" onclick="switchTab('appointments')">Appointments</button>
+    <button class="tab" onclick="switchTab('pricing')">Pricing Rules</button>
+  </div>
+
+  <!-- Leads Tab -->
+  <div id="tabLeads">
+    <div class="table-wrap">
+      <div class="table-header">
+        <div class="table-title">Inbound Leads</div>
+        <select class="filter-select" id="statusFilter" onchange="loadLeads()">
+          <option value="">All statuses</option>
+          <option value="new">New</option>
+          <option value="qualified">Qualified</option>
+          <option value="booked">Booked</option>
+          <option value="disqualified">Disqualified</option>
+        </select>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th><th>Job Type</th><th>Address</th><th>Timeline</th>
+            <th>AI Score</th><th>Status</th><th>Submitted</th>
+          </tr>
+        </thead>
+        <tbody id="leadsBody">
+          <tr><td class="empty-row" colspan="7">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Appointments Tab -->
+  <div id="tabAppointments" style="display:none">
+    <div class="appt-list" id="apptList">
+      <div style="color:var(--muted);font-size:.9rem">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Pricing Tab -->
+  <div id="tabPricing" style="display:none">
+    <div class="table-wrap">
+      <div class="table-header">
+        <div class="table-title">Pricing Rules</div>
+        <div style="font-size:.8rem;color:var(--muted)">Prices in dollars · Applied to all new quotes</div>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Job Type</th><th>Base Price ($)</th><th>Per Sqft ($)</th><th>Notes</th><th></th></tr>
+        </thead>
+        <tbody id="pricingBody">
+          <tr><td class="empty-row" colspan="5">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+let adminToken = '';
+let currentTab = 'leads';
+
+function login() {
+  const token = document.getElementById('tokenInput').value.trim();
+  if (!token) return;
+  adminToken = token;
+  // Try fetching stats to validate token
+  fetch('/api/admin/stats', {
+    headers: { Authorization: `Bearer ${token}` }
+  }).then(r => {
+    if (r.status === 401) {
+      document.getElementById('authError').style.display = 'block';
+      adminToken = '';
+    } else {
+      document.getElementById('authGate').style.display = 'none';
+      document.getElementById('mainDash').style.display = 'block';
+      r.json().then(d => renderStats(d.stats));
+      loadLeads();
+      setInterval(refresh, 60000);
+    }
+  }).catch(() => {
+    document.getElementById('authError').style.display = 'block';
+  });
+}
+
+function apiGet(path) {
+  return fetch('/api/admin' + path, {
+    headers: { Authorization: `Bearer ${adminToken}` }
+  }).then(r => r.json());
+}
+
+function apiPatch(path, body) {
+  return fetch('/api/admin' + path, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(r => r.json());
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', ['leads','appointments','pricing'][i] === tab);
+  });
+  ['tabLeads','tabAppointments','tabPricing'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  if (tab === 'leads') { document.getElementById('tabLeads').style.display = 'block'; loadLeads(); }
+  if (tab === 'appointments') { document.getElementById('tabAppointments').style.display = 'block'; loadAppointments(); }
+  if (tab === 'pricing') { document.getElementById('tabPricing').style.display = 'block'; loadPricing(); }
+}
+
+function refresh() {
+  apiGet('/stats').then(d => renderStats(d.stats));
+  if (currentTab === 'leads') loadLeads();
+  if (currentTab === 'appointments') loadAppointments();
+}
+
+function renderStats(s) {
+  if (!s) return;
+  document.getElementById('statTotal').textContent = s.total || 0;
+  document.getElementById('statQualified').textContent = s.qualified_count || 0;
+  document.getElementById('statBooked').textContent = s.booked_count || 0;
+  document.getElementById('statDisq').textContent = s.disqualified_count || 0;
+}
+
+async function loadLeads() {
+  const status = document.getElementById('statusFilter').value;
+  const url = '/leads' + (status ? '?status=' + status : '');
+  const data = await apiGet(url);
+  const tbody = document.getElementById('leadsBody');
+  const leads = data.leads || [];
+  if (!leads.length) {
+    tbody.innerHTML = '<tr><td class="empty-row" colspan="7">No leads found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = leads.map(l => {
+    const score = l.ai_score;
+    const scoreClass = score >= 70 ? 'high' : score < 40 ? 'low' : '';
+    const scoreWidth = score != null ? score : 0;
+    const date = new Date(l.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const jobLabel = (l.job_type || '').replace(/_/g, ' ');
+    return `<tr>
+      <td><strong>${esc(l.name)}</strong><div style="font-size:.78rem;color:var(--muted)">${esc(l.email)}</div></td>
+      <td>${esc(jobLabel)}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.address)}</td>
+      <td>${esc(l.timeline || '—')}</td>
+      <td>
+        ${score != null ? `<div class="score-bar"><div class="bar"><div class="bar-fill ${scoreClass}" style="width:${scoreWidth}%"></div></div>${score}</div>` : '<span style="color:var(--muted)">pending</span>'}
+      </td>
+      <td><span class="badge ${l.status}">${l.status}</span></td>
+      <td>${date}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadAppointments() {
+  const data = await apiGet('/appointments');
+  const list = document.getElementById('apptList');
+  const appts = data.appointments || [];
+  if (!appts.length) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:.9rem;padding:1rem">No upcoming appointments.</div>';
+    return;
+  }
+  list.innerHTML = appts.map(a => {
+    const d = new Date(a.scheduled_date + 'T12:00:00');
+    const day = d.getDate();
+    const mon = d.toLocaleDateString('en-US', { month: 'short' });
+    const [h, m] = a.scheduled_time.slice(0,5).split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h > 12 ? h - 12 : h || 12;
+    const timeStr = `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+    return `<div class="appt-card">
+      <div class="appt-date"><div class="day">${day}</div><div class="mon">${mon}</div></div>
+      <div class="appt-time">${timeStr}</div>
+      <div class="appt-info">
+        <div class="name">${esc(a.name)}</div>
+        <div class="addr">${esc(a.job_type.replace(/_/g,' '))} · ${esc(a.address)}</div>
+      </div>
+      <div class="appt-code">${esc(a.confirmation_code)}</div>
+    </div>`;
+  }).join('');
+}
+
+async function loadPricing() {
+  const data = await apiGet('/pricing');
+  const tbody = document.getElementById('pricingBody');
+  const rules = data.rules || [];
+  if (!rules.length) {
+    tbody.innerHTML = '<tr><td class="empty-row" colspan="5">No pricing rules found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rules.map(r => `
+    <tr id="rule-${r.id}">
+      <td><strong>${esc(r.display_name)}</strong><div style="font-size:.75rem;color:var(--muted)">${esc(r.job_type)}</div></td>
+      <td><input type="number" class="price-input" id="base-${r.id}" value="${(r.base_price_cents/100).toFixed(2)}" step="0.01" min="0"></td>
+      <td><input type="number" class="price-input" id="sqft-${r.id}" value="${(r.price_per_sqft_cents/100).toFixed(2)}" step="0.01" min="0"></td>
+      <td style="color:var(--muted);font-size:.82rem">${esc(r.notes || '')}</td>
+      <td>
+        <button class="save-btn" onclick="savePricing(${r.id})">Save</button>
+        <span class="saved-tick" id="tick-${r.id}">✓</span>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function savePricing(id) {
+  const base = parseFloat(document.getElementById('base-'+id).value) || 0;
+  const sqft = parseFloat(document.getElementById('sqft-'+id).value) || 0;
+  await apiPatch('/pricing/' + id, {
+    base_price_cents: Math.round(base * 100),
+    price_per_sqft_cents: Math.round(sqft * 100),
+  });
+  const tick = document.getElementById('tick-'+id);
+  tick.style.display = 'inline';
+  setTimeout(() => tick.style.display = 'none', 2000);
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

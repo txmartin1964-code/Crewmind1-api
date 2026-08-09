@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Book Your Estimate — CrewMind</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    :root{
+      --coal:#0d0f11;--slate:#1a1d23;--card:#22262e;--border:#2e333c;
+      --muted:#6b7280;--body:#c4c9d4;--heading:#f0f2f5;
+      --accent:#f59e0b;--accent-dim:rgba(245,158,11,0.12);
+      --green:#22c55e;--green-dim:rgba(34,197,94,0.12);
+      --red:#ef4444;--red-dim:rgba(239,68,68,0.12);
+    }
+    body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--coal);color:var(--body);line-height:1.65;min-height:100vh}
+    nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1.25rem 2rem;display:flex;align-items:center;justify-content:space-between;background:rgba(13,15,17,0.9);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .logo{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1.35rem;color:var(--heading);letter-spacing:-0.02em;text-decoration:none}
+    .logo span{color:var(--accent)}
+    .page{max-width:760px;margin:0 auto;padding:6rem 1.5rem 4rem}
+    .kicker{font-family:'Space Grotesk',sans-serif;font-size:.78rem;text-transform:uppercase;letter-spacing:.12em;color:var(--accent);font-weight:600;margin-bottom:.75rem}
+    h1{font-family:'Space Grotesk',sans-serif;font-size:clamp(1.6rem,3vw,2.2rem);font-weight:700;color:var(--heading);letter-spacing:-0.025em;margin-bottom:.5rem}
+    .sub{color:var(--muted);font-size:.95rem;margin-bottom:2rem}
+
+    /* Quote Summary */
+    .quote-card{background:var(--slate);border:1px solid var(--border);border-radius:14px;padding:1.5rem;margin-bottom:2rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}
+    .quote-label{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.2rem}
+    .quote-amount{font-family:'Space Grotesk',sans-serif;font-size:2rem;font-weight:700;color:var(--accent)}
+    .quote-note{font-size:.8rem;color:var(--muted)}
+    .quote-badge{background:var(--green-dim);border:1px solid var(--green);color:var(--green);padding:.3rem .8rem;border-radius:100px;font-size:.75rem;font-weight:600}
+
+    /* Calendar */
+    .calendar-section{margin-bottom:2rem}
+    .section-label{font-family:'Space Grotesk',sans-serif;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);font-weight:600;margin-bottom:1rem}
+    .month-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+    .month-title{font-family:'Space Grotesk',sans-serif;font-weight:600;color:var(--heading)}
+    .month-btn{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:.3rem .7rem;color:var(--body);cursor:pointer;font-size:.9rem;transition:border-color .2s}
+    .month-btn:hover{border-color:var(--accent);color:var(--heading)}
+    .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:.4rem}
+    .cal-header{text-align:center;font-size:.72rem;font-weight:600;color:var(--muted);text-transform:uppercase;padding:.3rem 0}
+    .cal-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:.9rem;cursor:default;transition:all .2s;border:1px solid transparent}
+    .cal-day.available{background:var(--card);border-color:var(--border);cursor:pointer;color:var(--body)}
+    .cal-day.available:hover{border-color:var(--accent);color:var(--heading)}
+    .cal-day.selected{background:var(--accent);color:#000;font-weight:700;border-color:var(--accent)}
+    .cal-day.empty{visibility:hidden}
+    .cal-day.past{color:var(--border);cursor:not-allowed}
+    .cal-day.today{border-color:var(--muted)}
+
+    /* Time slots */
+    .time-section{margin-bottom:2rem}
+    .time-grid{display:flex;flex-wrap:wrap;gap:.6rem}
+    .time-btn{padding:.5rem 1.2rem;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--body);cursor:pointer;font-size:.9rem;font-family:inherit;transition:all .2s}
+    .time-btn:hover{border-color:var(--accent);color:var(--heading)}
+    .time-btn.selected{background:var(--accent);border-color:var(--accent);color:#000;font-weight:600}
+    .no-slots{color:var(--muted);font-size:.9rem;padding:.75rem 0}
+
+    /* Book button */
+    .btn-book{width:100%;padding:1rem;background:var(--accent);color:#000;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1rem;border:none;border-radius:10px;cursor:pointer;transition:opacity .2s;margin-top:1rem}
+    .btn-book:hover{opacity:.9}
+    .btn-book:disabled{opacity:.4;cursor:not-allowed}
+    .status-banner{display:none;padding:.85rem 1rem;border-radius:8px;font-size:.88rem;margin-top:.75rem}
+    .status-banner.error{display:block;background:var(--red-dim);border:1px solid var(--red);color:#fca5a5}
+
+    .loading{color:var(--muted);font-size:.9rem;padding:.5rem 0}
+
+    @media(max-width:600px){
+      .quote-card{flex-direction:column;align-items:flex-start}
+      .page{padding:5rem 1rem 3rem}
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="logo">Crew<span>Mind</span></a>
+</nav>
+
+<div class="page">
+  <div class="kicker">Book Your Visit</div>
+  <h1>Pick a time that works for you</h1>
+  <p class="sub">Choose a date and time for your free on-site estimate. Takes less than a minute.</p>
+
+  <!-- Quote summary (shown if quote_id in URL) -->
+  <div class="quote-card" id="quoteCard" style="display:none">
+    <div>
+      <div class="quote-label">Estimated total</div>
+      <div class="quote-amount" id="quoteAmount">—</div>
+      <div class="quote-note">Final price confirmed at your estimate visit</div>
+    </div>
+    <div class="quote-badge">✓ Estimate Ready</div>
+  </div>
+
+  <!-- Calendar -->
+  <div class="calendar-section">
+    <div class="section-label">Select a date</div>
+    <div class="month-nav">
+      <button class="month-btn" id="prevMonth" onclick="changeMonth(-1)">← Prev</button>
+      <div class="month-title" id="monthTitle"></div>
+      <button class="month-btn" id="nextMonth" onclick="changeMonth(1)">Next →</button>
+    </div>
+    <div class="cal-grid" id="calGrid">
+      <div class="cal-header">Sun</div><div class="cal-header">Mon</div>
+      <div class="cal-header">Tue</div><div class="cal-header">Wed</div>
+      <div class="cal-header">Thu</div><div class="cal-header">Fri</div>
+      <div class="cal-header">Sat</div>
+    </div>
+  </div>
+
+  <!-- Time slots -->
+  <div class="time-section" id="timeSection" style="display:none">
+    <div class="section-label">Available times</div>
+    <div class="time-grid" id="timeGrid"></div>
+  </div>
+
+  <div class="status-banner" id="statusBanner"></div>
+  <button class="btn-book" id="bookBtn" disabled onclick="bookAppointment()">
+    Confirm Appointment
+  </button>
+</div>
+
+<script>
+// Parse URL params
+const params = new URLSearchParams(window.location.search);
+const leadId = params.get('lead');
+const quoteId = params.get('quote');
+
+// Show quote if we have one
+if (quoteId) {
+  // We can't fetch quote details without auth — just show card
+  document.getElementById('quoteCard').style.display = 'flex';
+}
+
+// State
+let currentYear, currentMonth;
+let allSlots = {}; // { 'YYYY-MM-DD': ['HH:MM', ...] }
+let selectedDate = null;
+let selectedTime = null;
+
+// Init calendar at current month
+const now = new Date();
+currentYear = now.getFullYear();
+currentMonth = now.getMonth();
+
+async function loadSlots() {
+  const from = new Date(currentYear, currentMonth, 1).toISOString().slice(0, 10);
+  const to = new Date(currentYear, currentMonth + 2, 0).toISOString().slice(0, 10);
+  try {
+    const res = await fetch(`/api/appointments/slots?from=${from}&to=${to}`);
+    const data = await res.json();
+    allSlots = {};
+    (data.slots || []).forEach(s => {
+      const d = s.slot_date.slice(0, 10);
+      if (!allSlots[d]) allSlots[d] = [];
+      allSlots[d].push(s.slot_time.slice(0, 5));
+    });
+    renderCalendar();
+  } catch {
+    renderCalendar();
+  }
+}
+
+function renderCalendar() {
+  const title = new Date(currentYear, currentMonth, 1)
+    .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  document.getElementById('monthTitle').textContent = title;
+
+  const grid = document.getElementById('calGrid');
+  // Remove day cells (keep 7 headers)
+  while (grid.children.length > 7) grid.removeChild(grid.lastChild);
+
+  const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Empty cells
+  for (let i = 0; i < firstDay; i++) {
+    const el = document.createElement('div');
+    el.className = 'cal-day empty';
+    grid.appendChild(el);
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const el = document.createElement('div');
+    el.textContent = d;
+
+    const hasSlots = allSlots[dateStr] && allSlots[dateStr].length > 0;
+    const isPast = dateStr < todayStr;
+    const isToday = dateStr === todayStr;
+
+    if (isPast || !hasSlots) {
+      el.className = 'cal-day past';
+    } else {
+      el.className = 'cal-day available' + (isToday ? ' today' : '');
+      if (dateStr === selectedDate) el.classList.add('selected');
+      el.onclick = () => selectDate(dateStr, el);
+    }
+    grid.appendChild(el);
+  }
+}
+
+function selectDate(dateStr, el) {
+  selectedDate = dateStr;
+  selectedTime = null;
+  document.querySelectorAll('.cal-day.selected').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
+  renderTimeSlots();
+  updateBookBtn();
+}
+
+function renderTimeSlots() {
+  const section = document.getElementById('timeSection');
+  const grid = document.getElementById('timeGrid');
+  grid.innerHTML = '';
+
+  const slots = allSlots[selectedDate] || [];
+  if (!slots.length) {
+    section.style.display = 'block';
+    grid.innerHTML = '<div class="no-slots">No times available on this day.</div>';
+    return;
+  }
+
+  section.style.display = 'block';
+  slots.forEach(t => {
+    const [h, m] = t.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h > 12 ? h - 12 : h || 12;
+    const label = `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+
+    const btn = document.createElement('button');
+    btn.className = 'time-btn' + (t === selectedTime ? ' selected' : '');
+    btn.textContent = label;
+    btn.onclick = () => {
+      selectedTime = t;
+      document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      updateBookBtn();
+    };
+    grid.appendChild(btn);
+  });
+}
+
+function updateBookBtn() {
+  document.getElementById('bookBtn').disabled = !(selectedDate && selectedTime && leadId);
+}
+
+function changeMonth(delta) {
+  currentMonth += delta;
+  if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+  if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+  selectedDate = null;
+  selectedTime = null;
+  document.getElementById('timeSection').style.display = 'none';
+  updateBookBtn();
+  loadSlots();
+}
+
+async function bookAppointment() {
+  if (!leadId || !selectedDate || !selectedTime) return;
+  const btn = document.getElementById('bookBtn');
+  btn.disabled = true;
+  btn.textContent = 'Booking...';
+  document.getElementById('statusBanner').className = 'status-banner';
+
+  try {
+    const res = await fetch('/api/appointments/book', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lead_id: parseInt(leadId),
+        quote_id: quoteId ? parseInt(quoteId) : null,
+        slot_date: selectedDate,
+        slot_time: selectedTime,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Booking failed');
+
+    // Redirect to confirmation page
+    window.location.href = `/confirm.html?code=${data.confirmation_code}`;
+  } catch (err) {
+    const banner = document.getElementById('statusBanner');
+    banner.className = 'status-banner error';
+    banner.textContent = err.message || 'Booking failed. Please try again.';
+    btn.disabled = false;
+    btn.textContent = 'Confirm Appointment';
+    // Reload slots in case of conflict
+    loadSlots();
+  }
+}
+
+// Init
+loadSlots();
+</script>
+</body>
+</html>

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Appointment Confirmed — CrewMind</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    :root{
+      --coal:#0d0f11;--slate:#1a1d23;--card:#22262e;--border:#2e333c;
+      --muted:#6b7280;--body:#c4c9d4;--heading:#f0f2f5;
+      --accent:#f59e0b;--accent-dim:rgba(245,158,11,0.12);
+      --green:#22c55e;--green-dim:rgba(34,197,94,0.12);
+    }
+    body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--coal);color:var(--body);line-height:1.65;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem}
+    .logo{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1.2rem;color:var(--heading);letter-spacing:-0.02em;text-decoration:none;margin-bottom:3rem;display:block;text-align:center}
+    .logo span{color:var(--accent)}
+    .card{background:var(--slate);border:1px solid var(--border);border-radius:20px;padding:3rem 2.5rem;max-width:500px;width:100%;text-align:center}
+    .check-circle{width:72px;height:72px;background:var(--green-dim);border:2px solid var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto 1.5rem}
+    h1{font-family:'Space Grotesk',sans-serif;font-size:1.8rem;font-weight:700;color:var(--heading);letter-spacing:-0.025em;margin-bottom:.5rem}
+    .sub{color:var(--muted);margin-bottom:2rem}
+    .details{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.25rem;text-align:left;margin-bottom:1.5rem}
+    .detail-row{display:flex;justify-content:space-between;align-items:flex-start;padding:.5rem 0;border-bottom:1px solid var(--border);gap:1rem}
+    .detail-row:last-child{border-bottom:none}
+    .detail-label{font-size:.82rem;color:var(--muted);min-width:90px;margin-top:.1rem}
+    .detail-value{font-weight:500;color:var(--heading);text-align:right}
+    .code{font-family:monospace;font-size:1.1rem;background:var(--coal);padding:.3rem .8rem;border-radius:6px;color:var(--accent);border:1px solid var(--border)}
+    .email-note{font-size:.85rem;color:var(--muted);margin-bottom:2rem;line-height:1.6}
+    .btn{display:inline-block;padding:.75rem 1.75rem;background:var(--accent);color:#000;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:.9rem;border-radius:8px;text-decoration:none;margin-top:.5rem;transition:opacity .2s}
+    .btn:hover{opacity:.9}
+    .btn-ghost{display:inline-block;padding:.75rem 1.75rem;border:1px solid var(--border);color:var(--body);font-size:.9rem;border-radius:8px;text-decoration:none;transition:border-color .2s;font-family:'Space Grotesk',sans-serif;font-weight:500}
+    .btn-ghost:hover{border-color:var(--accent);color:var(--heading)}
+    .actions{display:flex;flex-direction:column;gap:.75rem}
+    .loading{color:var(--muted);padding:2rem}
+    .error-msg{color:#fca5a5;padding:2rem;font-size:.95rem}
+  </style>
+</head>
+<body>
+
+<a href="/" class="logo">Crew<span>Mind</span></a>
+
+<div class="card">
+  <div id="loadingState" class="loading">Loading your appointment...</div>
+  <div id="confirmedState" style="display:none">
+    <div class="check-circle">✅</div>
+    <h1>You're confirmed!</h1>
+    <p class="sub">We'll see you at your estimate appointment.</p>
+
+    <div class="details" id="apptDetails">
+      <!-- populated by JS -->
+    </div>
+
+    <p class="email-note">A confirmation email has been sent to your address. Check your spam folder if you don't see it within a few minutes.</p>
+
+    <div class="actions">
+      <a href="/get-quote.html" class="btn">Submit Another Request →</a>
+      <a href="/" class="btn-ghost">Back to Home</a>
+    </div>
+  </div>
+  <div id="errorState" class="error-msg" style="display:none">
+    Appointment not found. Please double-check your confirmation code.
+  </div>
+</div>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const code = params.get('code');
+
+if (!code) {
+  document.getElementById('loadingState').style.display = 'none';
+  document.getElementById('errorState').style.display = 'block';
+  document.getElementById('errorState').textContent = 'No confirmation code provided.';
+} else {
+  loadAppointment(code.toUpperCase());
+}
+
+async function loadAppointment(code) {
+  try {
+    const res = await fetch(`/api/appointments/confirm/${code}`);
+    if (!res.ok) throw new Error('Not found');
+    const { appointment: a } = await res.json();
+
+    // Format date/time
+    const date = new Date(a.scheduled_date + 'T12:00:00');
+    const dateStr = date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const [h, m] = a.scheduled_time.slice(0, 5).split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h > 12 ? h - 12 : h || 12;
+    const timeStr = `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+
+    const details = document.getElementById('apptDetails');
+    details.innerHTML = `
+      <div class="detail-row">
+        <span class="detail-label">Date</span>
+        <span class="detail-value">${dateStr}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Time</span>
+        <span class="detail-value">${timeStr}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Address</span>
+        <span class="detail-value">${a.address || '—'}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Name</span>
+        <span class="detail-value">${a.name || '—'}</span>
+      </div>
+      ${a.total_cents ? `<div class="detail-row">
+        <span class="detail-label">Estimate</span>
+        <span class="detail-value" style="color:var(--accent)">$${(a.total_cents / 100).toLocaleString('en-US', {minimumFractionDigits:2})}</span>
+      </div>` : ''}
+      <div class="detail-row">
+        <span class="detail-label">Confirmation</span>
+        <span class="detail-value"><span class="code">${code}</span></span>
+      </div>
+    `;
+
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('confirmedState').style.display = 'block';
+  } catch {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('errorState').style.display = 'block';
+  }
+}
+</script>
+</body>
+</html>

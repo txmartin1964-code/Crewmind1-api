@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Get a Quote — CrewMind</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    :root{
+      --coal:#0d0f11;--slate:#1a1d23;--card:#22262e;--border:#2e333c;
+      --muted:#6b7280;--body:#c4c9d4;--heading:#f0f2f5;
+      --accent:#f59e0b;--accent-dim:rgba(245,158,11,0.12);
+      --green:#22c55e;--green-dim:rgba(34,197,94,0.12);
+      --red:#ef4444;--red-dim:rgba(239,68,68,0.12);
+    }
+    body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--coal);color:var(--body);line-height:1.65;min-height:100vh}
+    nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1.25rem 2rem;display:flex;align-items:center;justify-content:space-between;background:rgba(13,15,17,0.9);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+    .logo{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1.35rem;color:var(--heading);letter-spacing:-0.02em;text-decoration:none}
+    .logo span{color:var(--accent)}
+    .nav-back{font-size:0.85rem;color:var(--muted);text-decoration:none;display:flex;align-items:center;gap:0.4rem;transition:color .2s}
+    .nav-back:hover{color:var(--heading)}
+
+    .page{max-width:680px;margin:0 auto;padding:6rem 1.5rem 4rem}
+    .page-header{margin-bottom:2.5rem}
+    .kicker{font-family:'Space Grotesk',sans-serif;font-size:0.78rem;text-transform:uppercase;letter-spacing:.12em;color:var(--accent);font-weight:600;margin-bottom:.75rem}
+    h1{font-family:'Space Grotesk',sans-serif;font-size:clamp(1.7rem,3.5vw,2.4rem);font-weight:700;color:var(--heading);letter-spacing:-0.025em;line-height:1.2;margin-bottom:.6rem}
+    .sub{color:var(--muted);font-size:1rem}
+
+    /* Form */
+    .form-card{background:var(--slate);border:1px solid var(--border);border-radius:16px;padding:2rem}
+    .form-section{margin-bottom:2rem;padding-bottom:2rem;border-bottom:1px solid var(--border)}
+    .form-section:last-child{margin-bottom:0;padding-bottom:0;border-bottom:none}
+    .section-title{font-family:'Space Grotesk',sans-serif;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);font-weight:600;margin-bottom:1.25rem}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}
+    .form-row.single{grid-template-columns:1fr}
+    .form-group{display:flex;flex-direction:column;gap:.4rem}
+    label{font-size:.85rem;font-weight:500;color:var(--body)}
+    label .req{color:var(--accent)}
+    input,select,textarea{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.65rem .9rem;font-size:.95rem;color:var(--heading);font-family:inherit;width:100%;transition:border-color .2s,box-shadow .2s;outline:none}
+    input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+    input::placeholder,textarea::placeholder{color:var(--muted)}
+    select option{background:var(--card)}
+    textarea{resize:vertical;min-height:100px}
+
+    /* Photo upload */
+    .photo-drop{border:2px dashed var(--border);border-radius:10px;padding:2rem;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;position:relative}
+    .photo-drop:hover,.photo-drop.dragover{border-color:var(--accent);background:var(--accent-dim)}
+    .photo-drop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+    .photo-drop-icon{font-size:2rem;margin-bottom:.5rem}
+    .photo-drop p{font-size:.85rem;color:var(--muted)}
+    .photo-drop strong{color:var(--body)}
+    .photo-previews{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.75rem}
+    .photo-preview{width:72px;height:72px;border-radius:8px;object-fit:cover;border:1px solid var(--border)}
+
+    /* Job type grid */
+    .job-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem}
+    .job-btn{padding:.7rem .5rem;background:var(--card);border:1px solid var(--border);border-radius:8px;cursor:pointer;text-align:center;transition:border-color .2s,background .2s;font-size:.82rem;color:var(--body);font-family:inherit;line-height:1.3}
+    .job-btn:hover{border-color:var(--border);background:var(--border)}
+    .job-btn.selected{border-color:var(--accent);background:var(--accent-dim);color:var(--heading);font-weight:500}
+    .job-btn .emoji{display:block;font-size:1.4rem;margin-bottom:.3rem}
+
+    /* Submit */
+    .btn-submit{width:100%;padding:1rem;background:var(--accent);color:#000;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1rem;border:none;border-radius:10px;cursor:pointer;transition:opacity .2s;margin-top:1.5rem}
+    .btn-submit:hover{opacity:.9}
+    .btn-submit:disabled{opacity:.5;cursor:not-allowed}
+
+    /* Status */
+    .status-banner{display:none;padding:1rem 1.25rem;border-radius:10px;font-size:.9rem;margin-top:1rem}
+    .status-banner.error{display:block;background:var(--red-dim);border:1px solid var(--red);color:#fca5a5}
+    .status-banner.success{display:block;background:var(--green-dim);border:1px solid var(--green);color:#86efac}
+
+    /* Success screen */
+    .success-screen{display:none;text-align:center;padding:3rem 1rem}
+    .success-screen.show{display:block}
+    .success-icon{font-size:3.5rem;margin-bottom:1rem}
+    .success-screen h2{font-family:'Space Grotesk',sans-serif;font-size:1.6rem;color:var(--heading);margin-bottom:.75rem}
+    .success-screen p{color:var(--muted);max-width:400px;margin:0 auto 1.5rem}
+    .processing-steps{display:flex;flex-direction:column;gap:.5rem;max-width:360px;margin:0 auto 2rem;text-align:left}
+    .step-item{display:flex;align-items:center;gap:.75rem;padding:.65rem 1rem;background:var(--slate);border:1px solid var(--border);border-radius:8px;font-size:.85rem}
+    .step-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .5s}
+    .step-dot.active{background:var(--accent)}
+    .step-dot.done{background:var(--green)}
+
+    @media(max-width:600px){
+      .form-row{grid-template-columns:1fr}
+      .job-grid{grid-template-columns:repeat(2,1fr)}
+      .page{padding:5rem 1rem 3rem}
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="logo">Crew<span>Mind</span></a>
+  <a href="/" class="nav-back">← Back</a>
+</nav>
+
+<div class="page">
+  <div class="page-header">
+    <div class="kicker">Free Estimate</div>
+    <h1>Tell us about your project</h1>
+    <p class="sub">We'll review your request, generate a quote, and send you available appointment times — usually within minutes.</p>
+  </div>
+
+  <!-- Form -->
+  <div class="form-card" id="leadForm">
+    <!-- Job Type -->
+    <div class="form-section">
+      <div class="section-title">What type of work do you need?</div>
+      <input type="hidden" id="job_type" name="job_type">
+      <div class="job-grid">
+        <button type="button" class="job-btn" data-value="roof_repair"><span class="emoji">🏠</span>Roof Repair</button>
+        <button type="button" class="job-btn" data-value="roof_replacement"><span class="emoji">🔨</span>Roof Replace</button>
+        <button type="button" class="job-btn" data-value="gutter_cleaning"><span class="emoji">🌿</span>Gutters</button>
+        <button type="button" class="job-btn" data-value="siding_repair"><span class="emoji">🏗️</span>Siding</button>
+        <button type="button" class="job-btn" data-value="window_install"><span class="emoji">🪟</span>Windows</button>
+        <button type="button" class="job-btn" data-value="deck_build"><span class="emoji">🪵</span>Deck</button>
+        <button type="button" class="job-btn" data-value="hvac_service"><span class="emoji">❄️</span>HVAC</button>
+        <button type="button" class="job-btn" data-value="painting_exterior"><span class="emoji">🎨</span>Painting</button>
+        <button type="button" class="job-btn" data-value="plumbing_repair"><span class="emoji">🔧</span>Plumbing</button>
+        <button type="button" class="job-btn" data-value="electrical"><span class="emoji">⚡</span>Electrical</button>
+        <button type="button" class="job-btn" data-value="landscaping"><span class="emoji">🌳</span>Landscaping</button>
+        <button type="button" class="job-btn" data-value="other"><span class="emoji">📋</span>Other</button>
+      </div>
+    </div>
+
+    <!-- Project Details -->
+    <div class="form-section">
+      <div class="section-title">Project details</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Address <span class="req">*</span></label>
+          <input type="text" id="address" placeholder="123 Main St" required>
+        </div>
+        <div class="form-group">
+          <label>City</label>
+          <input type="text" id="city" placeholder="Springfield">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>ZIP Code</label>
+          <input type="text" id="zip" placeholder="12345" maxlength="10">
+        </div>
+        <div class="form-group">
+          <label>Square footage (approx.)</label>
+          <input type="number" id="sqft" placeholder="e.g. 1800" min="0">
+        </div>
+      </div>
+      <div class="form-row single">
+        <div class="form-group">
+          <label>Timeline</label>
+          <select id="timeline">
+            <option value="">Select timeline...</option>
+            <option value="asap">ASAP — urgent</option>
+            <option value="1-2 weeks">Within 1–2 weeks</option>
+            <option value="1 month">Within a month</option>
+            <option value="2-3 months">2–3 months</option>
+            <option value="flexible">Flexible / planning ahead</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row single">
+        <div class="form-group">
+          <label>Describe the work needed</label>
+          <textarea id="description" placeholder="What's the problem or project? Any details help us give a better estimate..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Photos -->
+    <div class="form-section">
+      <div class="section-title">Photos (optional but helpful)</div>
+      <div class="photo-drop" id="photoDrop">
+        <input type="file" id="photoInput" accept="image/*" multiple>
+        <div class="photo-drop-icon">📷</div>
+        <p><strong>Drop photos here</strong> or click to upload</p>
+        <p>Up to 5 images · JPEG, PNG, WebP</p>
+      </div>
+      <div class="photo-previews" id="photoPreviews"></div>
+    </div>
+
+    <!-- Contact Info -->
+    <div class="form-section">
+      <div class="section-title">Your contact info</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Full name <span class="req">*</span></label>
+          <input type="text" id="name" placeholder="Jane Smith" required>
+        </div>
+        <div class="form-group">
+          <label>Phone number</label>
+          <input type="tel" id="phone" placeholder="(555) 000-0000">
+        </div>
+      </div>
+      <div class="form-row single">
+        <div class="form-group">
+          <label>Email address <span class="req">*</span></label>
+          <input type="email" id="email" placeholder="jane@example.com" required>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-banner" id="statusBanner"></div>
+    <button class="btn-submit" id="submitBtn" type="button" onclick="submitLead()">
+      Get My Free Estimate →
+    </button>
+  </div>
+
+  <!-- Success Screen -->
+  <div class="success-screen" id="successScreen">
+    <div class="success-icon">✅</div>
+    <h2>Request received!</h2>
+    <p>Our team is reviewing your project now. We'll send your quote and available appointment times to your email.</p>
+    <div class="processing-steps">
+      <div class="step-item"><div class="step-dot active" id="dot1"></div> Reviewing your project details</div>
+      <div class="step-item"><div class="step-dot" id="dot2"></div> AI qualification running</div>
+      <div class="step-item"><div class="step-dot" id="dot3"></div> Generating your estimate</div>
+      <div class="step-item"><div class="step-dot" id="dot4"></div> Sending quote + booking link</div>
+    </div>
+    <p style="font-size:.85rem;color:var(--muted)">Check your email for a booking link with available appointment times.</p>
+  </div>
+</div>
+
+<script>
+// Job type selection
+document.querySelectorAll('.job-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.job-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    document.getElementById('job_type').value = btn.dataset.value;
+  });
+});
+
+// Photo previews
+const photoInput = document.getElementById('photoInput');
+const photoPreviews = document.getElementById('photoPreviews');
+const photoDrop = document.getElementById('photoDrop');
+let selectedFiles = [];
+
+photoInput.addEventListener('change', addFiles);
+photoDrop.addEventListener('dragover', e => { e.preventDefault(); photoDrop.classList.add('dragover'); });
+photoDrop.addEventListener('dragleave', () => photoDrop.classList.remove('dragover'));
+photoDrop.addEventListener('drop', e => {
+  e.preventDefault();
+  photoDrop.classList.remove('dragover');
+  addFiles({ target: { files: e.dataTransfer.files } });
+});
+
+function addFiles(e) {
+  const files = Array.from(e.target.files || []);
+  selectedFiles = [...selectedFiles, ...files].slice(0, 5);
+  renderPreviews();
+}
+
+function renderPreviews() {
+  photoPreviews.innerHTML = '';
+  selectedFiles.forEach(file => {
+    const img = document.createElement('img');
+    img.className = 'photo-preview';
+    img.src = URL.createObjectURL(file);
+    photoPreviews.appendChild(img);
+  });
+}
+
+// Form submission
+let leadId = null;
+
+async function submitLead() {
+  const jobType = document.getElementById('job_type').value;
+  const name = document.getElementById('name').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const address = document.getElementById('address').value.trim();
+
+  if (!jobType) { showError('Please select a job type.'); return; }
+  if (!name) { showError('Please enter your name.'); return; }
+  if (!email) { showError('Please enter your email address.'); return; }
+  if (!address) { showError('Please enter your address.'); return; }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+  hideError();
+
+  const formData = new FormData();
+  formData.append('job_type', jobType);
+  formData.append('name', name);
+  formData.append('email', email);
+  formData.append('address', address);
+  formData.append('city', document.getElementById('city').value.trim());
+  formData.append('zip', document.getElementById('zip').value.trim());
+  formData.append('sqft', document.getElementById('sqft').value || '');
+  formData.append('timeline', document.getElementById('timeline').value);
+  formData.append('description', document.getElementById('description').value.trim());
+  selectedFiles.forEach(f => formData.append('photos', f));
+
+  try {
+    const res = await fetch('/api/leads', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Submission failed');
+    leadId = data.lead_id;
+    showSuccess();
+    pollLeadStatus();
+  } catch (err) {
+    showError(err.message || 'Something went wrong. Please try again.');
+    btn.disabled = false;
+    btn.textContent = 'Get My Free Estimate →';
+  }
+}
+
+function showSuccess() {
+  document.getElementById('leadForm').style.display = 'none';
+  document.getElementById('successScreen').classList.add('show');
+}
+
+function showError(msg) {
+  const banner = document.getElementById('statusBanner');
+  banner.className = 'status-banner error';
+  banner.textContent = msg;
+}
+
+function hideError() {
+  document.getElementById('statusBanner').className = 'status-banner';
+}
+
+// Poll for qualification status
+let pollCount = 0;
+function pollLeadStatus() {
+  if (!leadId) return;
+  const dots = [null, 'dot1', 'dot2', 'dot3', 'dot4'];
+
+  const interval = setInterval(async () => {
+    pollCount++;
+    // Animate steps based on time elapsed
+    const step = Math.min(4, Math.ceil(pollCount / 2));
+    for (let i = 1; i <= 4; i++) {
+      const dot = document.getElementById('dot' + i);
+      if (i < step) dot.className = 'step-dot done';
+      else if (i === step) dot.className = 'step-dot active';
+      else dot.className = 'step-dot';
+    }
+
+    try {
+      const res = await fetch('/api/leads/' + leadId + '/status');
+      const data = await res.json();
+      if (data.qualification_status && data.qualification_status !== 'pending') {
+        // Done — mark all complete
+        for (let i = 1; i <= 4; i++) document.getElementById('dot' + i).className = 'step-dot done';
+        clearInterval(interval);
+      }
+    } catch { /* ignore */ }
+
+    if (pollCount > 20) clearInterval(interval); // stop after ~40s
+  }, 2000);
+}
+</script>
+</body>
+</html>
