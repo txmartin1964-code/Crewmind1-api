@@ -52,7 +52,30 @@ async function startServer() {
   } catch (err) {
     console.error('Migration failed — aborting startup:', err.message);
     process.exit(1);
+  } import { runCrewMindScraper } from './scraperService.js';
+
+app.post('/api/admin/scrape-buyers', async (req, res) => {
+  const { category, city } = req.body;
+  try {
+    const query = `${category} in ${city}`;
+    const buyerLeads = await runCrewMindScraper(query, 50);
+    res.json({ success: true, count: buyerLeads.length, leads: buyerLeads });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
+});
+
+app.post('/api/client/scrape-leads', async (req, res) => {
+  const { targetService, targetArea } = req.body;
+  try {
+    const query = `${targetService} quotes near ${targetArea}`;
+    const clientLeads = await runCrewMindScraper(query, 20);
+    res.json({ success: true, leads: clientLeads });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 
   app.listen(port, () => {
     console.log(`Server running on port ${port}`);
