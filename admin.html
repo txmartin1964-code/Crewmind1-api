@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CrewMind Control Panel</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    h1 { color: #38bdf8; margin-bottom: 8px; }
+    .card { background: #1e293b; border-radius: 8px; padding: 20px; margin-bottom: 24px; border: 1px solid #334155; }
+    .form-group { display: flex; gap: 12px; margin-top: 12px; }
+    input { flex: 1; padding: 10px 14px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; }
+    button { background: #0284c7; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+    button:disabled { background: #475569; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th, td { text-align: left; padding: 12px; border-bottom: 1px solid #334155; }
+    th { background: #0f172a; color: #94a3b8; }
+    .status { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; background: #0369a1; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>CrewMind Control Panel</h1>
+    <p style="color: #94a3b8;">Scraper Engine & Buyer Lead Operations</p>
+
+    <!-- Scraper Control Card -->
+    <div class="card">
+      <h3>Run Buyer Lead Scraper</h3>
+      <div class="form-group">
+        <input type="text" id="category" placeholder="Industry (e.g. commercial contractors)">
+        <input type="text" id="city" placeholder="Location (e.g. Dallas TX)">
+        <button id="runBtn" onclick="triggerScrape()">Run Scraper</button>
+      </div>
+      <p id="statusMsg" style="margin-top: 10px; font-size: 14px;"></p>
+    </div>
+
+    <!-- Scraped Leads Table -->
+    <div class="card">
+      <h3>Scraped Target Leads</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Company Name</th>
+            <th>Phone</th>
+            <th>Website</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="leadsTable">
+          <tr><td colspan="4" style="color: #94a3b8;">No lead data loaded yet. Run a scrape above.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    async function triggerScrape() {
+      const category = document.getElementById('category').value;
+      const city = document.getElementById('city').value;
+      const runBtn = document.getElementById('runBtn');
+      const statusMsg = document.getElementById('statusMsg');
+
+      if (!category || !city) {
+        alert('Please fill out both category and location.');
+        return;
+      }
+
+      runBtn.disabled = true;
+      statusMsg.innerText = 'Scraper active... running Google Maps crawl (takes 15–30s).';
+      statusMsg.style.color = '#38bdf8';
+
+      try {
+        const response = await fetch('/api/admin/scrape-buyers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category, city })
+        });
+
+        const data = await response.json();
+        runBtn.disabled = false;
+
+        if (response.ok && data.buyerleads) {
+          statusMsg.innerText = `Success! Captured ${data.count || data.buyerleads.length} leads.`;
+          statusMsg.style.color = '#4ade80';
+          renderLeads(data.buyerleads);
+        } else {
+          statusMsg.innerText = 'Scrape completed. Check server logs for details.';
+        }
+      } catch (err) {
+        runBtn.disabled = false;
+        statusMsg.innerText = 'Error triggering scraper endpoint.';
+        statusMsg.style.color = '#f87171';
+      }
+    }
+
+    function renderLeads(leads) {
+      const table = document.getElementById('leadsTable');
+      table.innerHTML = leads.map(lead => `
+        <tr>
+          <td><strong>${lead.name || 'N/A'}</strong></td>
+          <td>${lead.phone || 'N/A'}</td>
+          <td>${lead.website ? `<a href="${lead.website}" target="_blank" style="color:#38bdf8;">Link</a>` : 'N/A'}</td>
+          <td><span class="status">New Lead</span></td>
+        </tr>
+      `).join('');
+    }
+  </script>
+</body>
+</html>
