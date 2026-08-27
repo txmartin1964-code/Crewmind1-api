@@ -53,7 +53,8 @@ async function startServer() {
   } catch (err) {
     console.error('Migration failed — aborting startup:', err.message);
     process.exit(1);
-  } import { runCrewMindScraper } from './scraperService.js';
+  } const { runCrewMindScraper } = require('./scraperService.js');
+  
 
 app.post('/api/admin/scrape-buyers', async (req, res) => {
   const { category, city } = req.body;
