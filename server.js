@@ -1,9 +1,9 @@
 /**
- * server.js — Entry point. Wiring only: middleware, route mounts, app.listen.
- * Hard limit: 300 lines. All routes live in routes/, all queries in db/.
+ * server.js - Entry point. Wiring only: middleware, route mounts, app.listen.
  */
 
 const express = require('express');
+const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { runCrewMindScraper } = require('./scraperService.js');
@@ -17,23 +17,29 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-// ─── MIDDLEWARE ────────────────────────────────────────────────────────────────
+// -- MIDDLEWARE
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ─── HEALTH CHECK ─────────────────────────────────────────────────────────────
+// -- HEALTH CHECK
 // Note: Does NOT query database to allow Neon auto-suspend
 app.get('/health', (req, res) => res.json({ status: 'healthy' }));
 
-// ─── STATIC FILES ─────────────────────────────────────────────────────────────
+// -- STATIC FILES
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── ROUTES ───────────────────────────────────────────────────────────────────
+// -- ROUTES
 app.use('/api/leads', require('./routes/leads'));
 app.use('/api/appointments', require('./routes/appointments'));
 app.use('/api/admin', require('./routes/admin'));
 
-// ─── LANDING PAGE (with analytics beacon) ─────────────────────────────────────
+// -- LANDING PAGE (with analytics beacon)
 app.get('/', (req, res) => {
   const htmlPath = path.join(__dirname, 'public', 'index.html');
   if (fs.existsSync(htmlPath)) {
@@ -42,26 +48,17 @@ app.get('/', (req, res) => {
     html = html.replace('__POLSIA_SLUG__', slug);
     res.type('html').send(html);
   } else {
-    res.json({ message: 'CrewMind — Lead to Booking Engine' });
+    res.json({ message: 'CrewMind - Load to Booking Engine' });
   }
 });
 
-// ─── STARTUP: RUN MIGRATIONS THEN LISTEN ──────────────────────────────────────
-async function startServer() {
-  try {
-    await runMigrations();
-  } catch (err) {
-    console.error('Migration failed — aborting startup:', err.message);
-    process.exit(1);
-  } const { runCrewMindScraper } = require('./scraperService.js');
-  
-
+// -- SCRAPER ENDPOINTS
 app.post('/api/admin/scrape-buyers', async (req, res) => {
   const { category, city } = req.body;
   try {
     const query = `${category} in ${city}`;
-    const buyerLeads = await runCrewMindScraper(query, 50);
-    res.json({ success: true, count: buyerLeads.length, leads: buyerLeads });
+    const buyerleads = await runCrewMindScraper(query, 50);
+    res.json({ success: true, count: buyerleads.length, leads: buyerleads, buyerleads });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -71,13 +68,21 @@ app.post('/api/client/scrape-leads', async (req, res) => {
   const { targetService, targetArea } = req.body;
   try {
     const query = `${targetService} quotes near ${targetArea}`;
-    const clientLeads = await runCrewMindScraper(query, 20);
-    res.json({ success: true, leads: clientLeads });
+    const clientleads = await runCrewMindScraper(query, 20);
+    res.json({ success: true, leads: clientleads });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
+// -- STARTUP: RUN MIGRATIONS THEN LISTEN
+async function startServer() {
+  try {
+    await runMigrations();
+  } catch (err) {
+    console.error('Migration failed - aborting startup:', err.message);
+    process.exit(1);
+  }
 
   app.listen(port, () => {
     console.log(`Server running on port ${port}`);
@@ -85,7 +90,6 @@ app.post('/api/client/scrape-leads', async (req, res) => {
 }
 
 async function runMigrations() {
-  // Import the migration runner but drive it ourselves so we can await it
   const { Pool } = require('pg');
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -100,10 +104,10 @@ async function runMigrations() {
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL UNIQUE,
         applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
+      );
     `);
 
-    // Core users table (Polsia platform requirement)
+    // Core users table
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -117,10 +121,10 @@ async function runMigrations() {
         subscription_plan VARCHAR(255),
         subscription_expires_at TIMESTAMPTZ,
         subscription_updated_at TIMESTAMPTZ
-      )
+      );
     `);
-    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx ON users (LOWER(email))`);
-    await client.query(`CREATE INDEX IF NOT EXISTS users_stripe_subscription_id_idx ON users (stripe_subscription_id)`);
+    await client.query('CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx ON users (LOWER(email));');
+    await client.query('CREATE INDEX IF NOT EXISTS users_stripe_subscription_id_idx ON users (stripe_subscription_id);');
 
     // Folder migrations
     const migrationsDir = path.join(__dirname, 'migrations');
@@ -156,3 +160,4 @@ async function runMigrations() {
 }
 
 startServer();
+          
