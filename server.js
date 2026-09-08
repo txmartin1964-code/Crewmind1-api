@@ -1,5 +1,5 @@
 /**
- * server.js - Entry point. Wiring only: middleware, route mounts, app.listen.
+ * server.js - CrewMind Backend Entry Point
  */
 
 const express = require('express');
@@ -17,7 +17,7 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-// -- MIDDLEWARE
+// -- CORS & PARSING MIDDLEWARE
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -28,18 +28,17 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // -- HEALTH CHECK
-// Note: Does NOT query database to allow Neon auto-suspend
 app.get('/health', (req, res) => res.json({ status: 'healthy' }));
 
 // -- STATIC FILES
 app.use(express.static(path.join(__dirname, 'public')));
 
-// -- ROUTES
+// -- API ROUTES
 app.use('/api/leads', require('./routes/leads'));
 app.use('/api/appointments', require('./routes/appointments'));
 app.use('/api/admin', require('./routes/admin'));
 
-// -- LANDING PAGE (with analytics beacon)
+// -- LANDING PAGE
 app.get('/', (req, res) => {
   const htmlPath = path.join(__dirname, 'public', 'index.html');
   if (fs.existsSync(htmlPath)) {
@@ -48,7 +47,7 @@ app.get('/', (req, res) => {
     html = html.replace('__POLSIA_SLUG__', slug);
     res.type('html').send(html);
   } else {
-    res.json({ message: 'CrewMind - Load to Booking Engine' });
+    res.json({ message: 'CrewMind - Lead to Booking Engine' });
   }
 });
 
@@ -160,4 +159,3 @@ async function runMigrations() {
 }
 
 startServer();
-          
