@@ -6,7 +6,7 @@
  * Scoring: 0–100. Below 40 = disqualified. 40–69 = review. 70+ = qualified.
  */
 
-const { chat } = require('../lib/polsia-ai');
+const { chat } = require('../lib/ai');
 
 const SCORE_THRESHOLD_QUALIFIED = 70;
 const SCORE_THRESHOLD_REVIEW = 40;
