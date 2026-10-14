@@ -43,9 +43,9 @@ router.post('/', upload.array('photos', 5), async (req, res) => {
       return res.status(400).json({ error: 'Invalid email address.' });
     }
 
-    // Upload photos to R2 if provided
+    // Upload photos to R2 if provided (skipped unless R2_UPLOAD_URL is configured — lead still saves without photos)
     const photo_urls = [];
-    if (req.files && req.files.length > 0) {
+    if (req.files && req.files.length > 0 && process.env.R2_UPLOAD_URL) {
       for (const file of req.files) {
         try {
           const formData = new FormData();
@@ -53,10 +53,10 @@ router.post('/', upload.array('photos', 5), async (req, res) => {
             filename: file.originalname,
             contentType: file.mimetype,
           });
-          const uploadRes = await fetch('https://polsia.com/api/proxy/r2/upload', {
+          const uploadRes = await fetch(process.env.R2_UPLOAD_URL, {
             method: 'POST',
             headers: {
-              Authorization: `Bearer ${process.env.POLSIA_API_KEY}`,
+              Authorization: `Bearer ${process.env.R2_API_KEY}`,
               ...formData.getHeaders(),
             },
             body: formData,
