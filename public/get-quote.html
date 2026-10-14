@@ -294,10 +294,14 @@ async function submitLead() {
   formData.append('sqft', document.getElementById('sqft').value || '');
   formData.append('timeline', document.getElementById('timeline').value);
   formData.append('description', document.getElementById('description').value.trim());
+  formData.append('phone', document.getElementById('phone').value.trim());
   selectedFiles.forEach(f => formData.append('photos', f));
 
   try {
-    const res = await fetch('https://crewmind1-api.onrender.com/api/leads',{
+    const res = await fetch('https://crewmind1-api.onrender.com/api/leads', {
+      method: 'POST',
+      body: formData
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Submission failed');
     leadId = data.lead_id;
