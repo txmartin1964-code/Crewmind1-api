@@ -17,19 +17,20 @@ async function createContract(data) {
     lead_id, quote_id, title, scope_of_work, total_cents, deposit_cents,
     terms, customer_name, customer_email, job_address,
   } = data;
+  const tenantId = data.tenant_id || 1;
   const result = await pool.query(
     `INSERT INTO contracts (
-       lead_id, quote_id, contract_number, access_token, status, title,
+       tenant_id, lead_id, quote_id, contract_number, access_token, status, title,
        scope_of_work, total_cents, deposit_cents, terms,
        customer_name, customer_email, job_address
      )
      VALUES (
-       $1, $2,
+       $1, $2, $3,
        'CM-' || TO_CHAR(NOW(), 'YYYY') || '-' || LPAD(nextval('contracts_number_seq')::text, 4, '0'),
-       $3, 'draft', $4, $5, $6, $7, $8, $9, $10, $11
+       $4, 'draft', $5, $6, $7, $8, $9, $10, $11, $12
      )
      RETURNING *`,
-    [lead_id, quote_id, generateAccessToken(), title, scope_of_work,
+    [tenantId, lead_id, quote_id, generateAccessToken(), title, scope_of_work,
      total_cents, deposit_cents, terms, customer_name, customer_email, job_address]
   );
   return result.rows[0];
@@ -53,14 +54,22 @@ async function getContractByQuoteId(quoteId) {
   return result.rows[0] || null;
 }
 
-async function getContracts({ limit = 100 } = {}) {
+async function getContracts({ tenantId, limit = 100 } = {}) {
+  const params = [];
+  let where = '';
+  if (tenantId) {
+    params.push(tenantId);
+    where = `WHERE c.tenant_id=$${params.length}`;
+  }
+  params.push(limit);
   const result = await pool.query(
     `SELECT c.*, l.name AS lead_name
      FROM contracts c
      LEFT JOIN leads l ON l.id = c.lead_id
+     ${where}
      ORDER BY c.created_at DESC
-     LIMIT $1`,
-    [limit]
+     LIMIT $${params.length}`,
+    params
   );
   return result.rows;
 }

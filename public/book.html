@@ -147,7 +147,7 @@ async function loadSlots() {
   const from = new Date(currentYear, currentMonth, 1).toISOString().slice(0, 10);
   const to = new Date(currentYear, currentMonth + 2, 0).toISOString().slice(0, 10);
   try {
-    const res = await fetch(`/api/appointments/slots?from=${from}&to=${to}`);
+    const res = await fetch(`/api/appointments/slots?from=${from}&to=${to}${leadId ? '&lead=' + encodeURIComponent(leadId) : ''}`);
     const data = await res.json();
     allSlots = {};
     (data.slots || []).forEach(s => {

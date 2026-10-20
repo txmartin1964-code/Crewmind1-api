@@ -157,4 +157,83 @@ ${paymentHtml}— CrewMind
   return sendEmail({ to: contract.customer_email, subject, body, html });
 }
 
-module.exports = { sendEmail, sendLeadAck, sendQuoteWithBookingLink, sendAppointmentConfirmation, sendContractLink };
+/**
+ * Sends the customer their final invoice with the balance pay link.
+ * invoice: row from db/invoices.js. payUrl: the stable redirector URL.
+ */
+async function sendFinalInvoice(lead, invoice, payUrl, businessName) {
+  const due = (invoice.amount_due_cents / 100).toFixed(2);
+  const total = (invoice.total_cents / 100).toFixed(2);
+  const deposit = (invoice.deposit_paid_cents / 100).toFixed(2);
+  const from = businessName || 'CrewMind';
+  const subject = `Your final invoice ${invoice.invoice_number || ''} — balance $${due}`.trim();
+  const body = `Hi ${lead.name},\n\nYour job is complete — thank you!\n\nFinal invoice ${invoice.invoice_number || ''}\nJob total: $${total}\nDeposit paid: $${deposit}\nBalance due: $${due}\n\nPay securely here:\n${payUrl}\n\nQuestions? Just reply to this email.\n\n— ${from}`;
+  const html = `
+Hi ${lead.name},<br><br>
+Your job is complete — thank you!<br><br>
+<strong>Final invoice ${invoice.invoice_number || ''}</strong><br>
+Job total: $${total}<br>
+Deposit paid: $${deposit}<br>
+<strong>Balance due: $${due}</strong><br><br>
+<a href="${payUrl}">Pay your balance →</a><br><br>
+Questions? Just reply to this email.<br><br>
+— ${from}
+`;
+  return sendEmail({ to: lead.email, subject, body, html });
+}
+
+/**
+ * Sends the customer the approval link for a change order (Item 5).
+ */
+async function sendChangeOrderLink(lead, changeOrder, signUrl, businessName) {
+  const from = businessName || 'CrewMind';
+  const amount = (changeOrder.amount_cents / 100).toFixed(2);
+  const subject = `Approval needed: change order — $${amount}`;
+  const body = `Hi ${lead.name},\n\n${from} has a change order for your job that needs your approval:\n\n${changeOrder.description}\n\nAmount: $${amount} (added to your final invoice only if you approve)\n\nReview and sign here:\n${signUrl}\n\n— ${from}`;
+  const html = `
+Hi ${lead.name},<br><br>
+${from} has a change order for your job that needs your approval:<br><br>
+<em>${changeOrder.description}</em><br><br>
+<strong>Amount: $${amount}</strong> — added to your final invoice only if you approve.<br><br>
+<a href="${signUrl}">Review and sign →</a><br><br>
+— ${from}
+`;
+  return sendEmail({ to: lead.email, subject, body, html });
+}
+
+/**
+ * Review request (Item 6): asks how the job went, with BOTH paths side
+ * by side — "Share on Google" and "Tell us privately" — for every
+ * customer, no sentiment gating. googleUrl may be null (tenant has not
+ * set their review link yet); the private path always works.
+ */
+async function sendReviewRequest(lead, { googleUrl, feedbackUrl, businessName }) {
+  const from = businessName || 'CrewMind';
+  const subject = `How did we do? — ${from}`;
+  const googleLine = googleUrl
+    ? `\nShare your experience on Google:\n${googleUrl}\n`
+    : '';
+  const googleHtml = googleUrl
+    ? `<a href="${googleUrl}" style="display:inline-block;padding:12px 20px;background:#ffb347;color:#1a1206;border-radius:8px;text-decoration:none;font-weight:700;margin-right:10px;">Share on Google</a>`
+    : '';
+  const body = `Hi ${lead.name},\n\nThanks for choosing ${from}. We'd love to hear how the job went — it takes about a minute.\n${googleLine}\nPrefer to tell us directly? We read every note:\n${feedbackUrl}\n\nEither way, thank you.\n\n— ${from}`;
+  const html = `
+Hi ${lead.name},<br><br>
+Thanks for choosing ${from}. We'd love to hear how the job went — it takes about a minute.<br><br>
+${googleHtml}<a href="${feedbackUrl}" style="display:inline-block;padding:12px 20px;background:#232833;color:#e8eaed;border:1px solid #333a47;border-radius:8px;text-decoration:none;font-weight:700;">Tell us privately</a><br><br>
+Either way, thank you.<br><br>
+— ${from}
+`;
+  return sendEmail({ to: lead.email, subject, body, html });
+}
+
+/** Thank-you sent after a customer submits private feedback. */
+async function sendFeedbackThanks(lead, businessName) {
+  const from = businessName || 'CrewMind';
+  const subject = `Thank you for your feedback — ${from}`;
+  const body = `Hi ${lead.name},\n\nThank you for telling us how the job went. We read every note, and yours helps us do better work.\n\n— ${from}`;
+  const html = `Hi ${lead.name},<br><br>Thank you for telling us how the job went. We read every note, and yours helps us do better work.<br><br>— ${from}`;
+  return sendEmail({ to: lead.email, subject, body, html });
+}
+
+module.exports = { sendEmail, sendLeadAck, sendQuoteWithBookingLink, sendAppointmentConfirmation, sendContractLink, sendFinalInvoice, sendReviewRequest, sendFeedbackThanks, sendChangeOrderLink };

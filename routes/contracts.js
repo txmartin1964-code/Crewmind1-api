@@ -62,7 +62,7 @@ publicRouter.get('/document/:token', async (req, res) => {
   try {
     const contract = await getContractByToken(req.params.token);
     if (!contract) return res.status(404).send('Contract not found.');
-    const settings = await getAllSettings();
+    const settings = await getAllSettings(contract.tenant_id || 1);
     res.type('html').send(renderContractHtml(contract, settings));
   } catch (err) {
     console.error('[contracts] document error:', err);
@@ -125,7 +125,7 @@ adminRouter.use(requireAdmin);
 
 adminRouter.get('/', async (req, res) => {
   try {
-    const contracts = await getContracts({ limit: parseInt(req.query.limit) || 100 });
+    const contracts = await getContracts({ tenantId: 1, limit: parseInt(req.query.limit) || 100 });
     res.json({ contracts });
   } catch (err) {
     console.error('[contracts] admin list error:', err);
@@ -228,7 +228,7 @@ adminRouter.get('/:id/document', async (req, res) => {
   try {
     const contract = await getContractById(req.params.id);
     if (!contract) return res.status(404).send('Contract not found.');
-    const settings = await getAllSettings();
+    const settings = await getAllSettings(contract.tenant_id || 1);
     res.type('html').send(renderContractHtml(contract, settings));
   } catch (err) {
     console.error('[contracts] admin document error:', err);
@@ -247,7 +247,7 @@ adminRouter.get('/:id/pdf', async (req, res) => {
   try {
     const contract = await getContractById(req.params.id);
     if (!contract) return res.status(404).json({ error: 'Contract not found.' });
-    const settings = await getAllSettings();
+    const settings = await getAllSettings(contract.tenant_id || 1);
     const html = renderContractHtml(contract, settings);
 
     const puppeteer = require('puppeteer');

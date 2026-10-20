@@ -12,6 +12,7 @@ const FormData = require('form-data');
 const router = express.Router();
 
 const { createLead, updateLeadQualification, getLeadById } = require('../db/leads');
+const { getTenantBySlug, getTenantById, isLocked, OPERATOR_TENANT_ID } = require('../db/tenants');
 const { createQuote, updateQuoteStatus } = require('../db/quotes');
 const { qualifyLead } = require('../services/lead-qualify');
 const { generateQuote } = require('../services/quote-engine');
@@ -20,6 +21,8 @@ const {
   isStripeConfigured, createOrReuseCheckoutSession, computeDepositCents, getPaymentLinkUrl,
 } = require('../services/payments');
 const { ensureContractForQuote } = require('../services/contracts');
+const { checkCap } = require('../services/usage');
+const { recordUsage } = require('../db/usage');
 
 // Multer: memory storage only (Render filesystem is ephemeral)
 const upload = multer({
@@ -74,8 +77,25 @@ router.post('/', upload.array('photos', 5), async (req, res) => {
       }
     }
 
+    // Resolve which business this lead belongs to. Tenant quote forms
+    // pass their slug (?t=<slug> on the form action, or a tenant_slug
+    // field); the original Phase 1 form sends neither and lands on the
+    // operator tenant (1), unchanged.
+    let tenant;
+    const slug = (req.body.tenant_slug || req.query.t || '').toString().trim();
+    if (slug) {
+      tenant = await getTenantBySlug(slug);
+      if (!tenant) return res.status(400).json({ error: 'Unknown business.' });
+    } else {
+      tenant = await getTenantById(OPERATOR_TENANT_ID);
+    }
+    if (tenant && isLocked(tenant)) {
+      return res.status(402).json({ error: 'This business is not currently accepting online quote requests.' });
+    }
+
     // Create lead record
     const lead = await createLead({
+      tenant_id: tenant ? tenant.id : OPERATOR_TENANT_ID,
       name, email, phone, job_type, address, city, zip,
       sqft: sqft ? parseInt(sqft) : null,
       timeline, description, photo_urls,
@@ -101,9 +121,36 @@ router.post('/', upload.array('photos', 5), async (req, res) => {
  */
 async function qualifyAndQuote(lead) {
   try {
+    // 0. Plan cap: AI qualifications are metered (200/month included).
+    //    A capped tenant's lead is parked for manual handling — it is
+    //    never AI-scored and never charged.
+    const tenant = await getTenantById(lead.tenant_id || OPERATOR_TENANT_ID);
+    if (tenant) {
+      const cap = await checkCap(tenant, 'ai_qualified_lead');
+      if (!cap.allowed) {
+        await updateLeadQualification(lead.id, {
+          status: 'new',
+          qualification_status: 'quota_exceeded',
+          ai_score: null,
+          ai_reasoning: 'Monthly AI qualification allowance reached for this business. Review this lead manually in the console.',
+        });
+        console.log(`[leads] lead ${lead.id} parked: AI qualification cap reached for tenant ${tenant.id}.`);
+        return;
+      }
+    }
+
     // 1. AI qualification
     const qualification = await qualifyLead(lead);
     const updatedLead = await updateLeadQualification(lead.id, qualification);
+
+    // Meter the qualification — only when the AI actually scored the
+    // lead and did not disqualify it. Spam/disqualified leads never
+    // count against the cap and are never charged.
+    if (tenant && qualification.ai_score != null && updatedLead.qualification_status !== 'disqualified') {
+      await recordUsage(tenant.id, 'ai_qualified_lead', 1).catch(err =>
+        console.error('[leads] usage recording failed:', err.message)
+      );
+    }
 
     // 2. Generate quote for qualified leads (skip disqualified)
     if (updatedLead.status === 'qualified' || updatedLead.qualification_status === 'manual_review') {

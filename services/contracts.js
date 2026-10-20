@@ -130,7 +130,8 @@ async function ensureContractForQuote(lead, quote) {
   const existing = await getContractByQuoteId(quote.id);
   if (existing) return existing;
 
-  const settings = await getAllSettings();
+  const tenantId = quote.tenant_id || lead.tenant_id || 1;
+  const settings = await getAllSettings(tenantId);
   const depositCents = await computeDepositCents(quote);
   const jobAddress = [lead.address, lead.city, lead.zip].filter(Boolean).join(', ');
 
@@ -145,6 +146,7 @@ async function ensureContractForQuote(lead, quote) {
   }, content);
 
   return createContract({
+    tenant_id: tenantId,
     lead_id: lead.id,
     quote_id: quote.id,
     title: `${jobLabel(lead.job_type || quote.job_type)} — Service Agreement`,

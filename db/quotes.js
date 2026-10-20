@@ -8,12 +8,13 @@ const pool = require('./index');
 
 async function createQuote(data) {
   const { lead_id, job_type, base_price_cents, sqft_price_cents, total_cents, line_items, notes } = data;
+  const tenantId = data.tenant_id || 1;
   const valid_until = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days
   const result = await pool.query(
-    `INSERT INTO quotes (lead_id, job_type, base_price_cents, sqft_price_cents, total_cents, line_items, notes, valid_until)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    `INSERT INTO quotes (tenant_id, lead_id, job_type, base_price_cents, sqft_price_cents, total_cents, line_items, notes, valid_until)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
      RETURNING *`,
-    [lead_id, job_type, base_price_cents, sqft_price_cents, total_cents,
+    [tenantId, lead_id, job_type, base_price_cents, sqft_price_cents, total_cents,
      JSON.stringify(line_items || []), notes || null, valid_until]
   );
   return result.rows[0];
@@ -75,25 +76,49 @@ async function markQuotePayment(quoteId, { paymentStatus, amountPaidCents, strip
   return result.rows[0];
 }
 
-async function getPricingRules() {
+async function getPricingRules(tenantId = 1) {
   const result = await pool.query(
-    'SELECT * FROM pricing_rules WHERE is_active=TRUE ORDER BY display_name'
+    'SELECT * FROM pricing_rules WHERE tenant_id=$1 AND is_active=TRUE ORDER BY display_name',
+    [tenantId]
   );
   return result.rows;
 }
 
-async function updatePricingRule(id, { base_price_cents, price_per_sqft_cents, notes }) {
+async function updatePricingRule(id, { base_price_cents, price_per_sqft_cents, notes }, tenantId = 1) {
   const result = await pool.query(
     `UPDATE pricing_rules
      SET base_price_cents=$1, price_per_sqft_cents=$2, notes=$3, updated_at=NOW()
-     WHERE id=$4
+     WHERE id=$4 AND tenant_id=$5
      RETURNING *`,
-    [base_price_cents, price_per_sqft_cents, notes || null, id]
+    [base_price_cents, price_per_sqft_cents, notes || null, id, tenantId]
   );
   return result.rows[0];
+}
+
+/**
+ * Copies the shared default price book (lib/pricing-defaults.js) into a
+ * tenant's own pricing_rules rows. Idempotent — existing rows for the
+ * tenant are left untouched, so re-running onboarding never clobbers
+ * prices the tenant has already tuned.
+ */
+async function seedPricingRulesForTenant(tenantId) {
+  const { PRICING_DEFAULTS } = require('../lib/pricing-defaults');
+  let inserted = 0;
+  for (const [job_type, display_name, base, perSqft, notes] of PRICING_DEFAULTS) {
+    const result = await pool.query(
+      `INSERT INTO pricing_rules (tenant_id, job_type, display_name, base_price_cents, price_per_sqft_cents, notes, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+       ON CONFLICT (tenant_id, job_type) DO NOTHING
+       RETURNING id`,
+      [tenantId, job_type, display_name, base, perSqft, notes]
+    );
+    if (result.rows.length) inserted++;
+  }
+  return inserted;
 }
 
 module.exports = {
   createQuote, updateQuoteStatus, getQuoteByLeadId, getQuoteById,
   setQuoteCheckoutSession, markQuotePayment, getPricingRules, updatePricingRule,
+  seedPricingRulesForTenant,
 };

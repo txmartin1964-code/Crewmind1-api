@@ -11,7 +11,7 @@ const { getPricingRules } = require('../db/quotes');
  * Returns the quote data ready to pass to createQuote().
  */
 async function generateQuote(lead) {
-  const rules = await getPricingRules();
+  const rules = await getPricingRules(lead.tenant_id || 1);
   const rule = rules.find(r => r.job_type === lead.job_type) || rules.find(r => r.job_type === 'other');
 
   if (!rule) {
@@ -42,6 +42,7 @@ async function generateQuote(lead) {
     : 'This is a preliminary estimate. Final pricing confirmed during on-site visit.';
 
   return {
+    tenant_id: lead.tenant_id || 1,
     lead_id: lead.id,
     job_type: lead.job_type,
     base_price_cents,

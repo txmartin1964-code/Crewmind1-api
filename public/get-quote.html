@@ -298,7 +298,7 @@ async function submitLead() {
   selectedFiles.forEach(f => formData.append('photos', f));
 
   try {
-    const res = await fetch('https://crewmind1-api.onrender.com/api/leads', {
+    const res = await fetch('/api/leads', {
       method: 'POST',
       body: formData
     });

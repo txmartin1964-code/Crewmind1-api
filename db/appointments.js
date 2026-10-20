@@ -22,7 +22,7 @@ const SLOT_TIMES = ['08:00', '10:00', '13:00', '15:00'];
  * safe to run at every startup and on demand from the admin console.
  * Returns { inserted, business_days, max_bookings }.
  */
-async function ensureUpcomingSlots({ businessDays = 30, maxBookings = 2 } = {}) {
+async function ensureUpcomingSlots({ tenantId = 1, businessDays = 30, maxBookings = 2 } = {}) {
   const result = await pool.query(
     `WITH biz_days AS (
        SELECT d::date AS slot_date
@@ -31,44 +31,45 @@ async function ensureUpcomingSlots({ businessDays = 30, maxBookings = 2 } = {}) 
        ORDER BY d
        LIMIT $2
      )
-     INSERT INTO available_slots (slot_date, slot_time, max_bookings)
-     SELECT b.slot_date, t.slot_time, $1
+     INSERT INTO available_slots (tenant_id, slot_date, slot_time, max_bookings)
+     SELECT $3, b.slot_date, t.slot_time, $1
      FROM biz_days b
      CROSS JOIN (VALUES ('08:00'), ('10:00'), ('13:00'), ('15:00')) AS t(slot_time)
      WHERE NOT EXISTS (
        SELECT 1 FROM available_slots s
-       WHERE s.slot_date = b.slot_date AND s.slot_time = t.slot_time
+       WHERE s.tenant_id = $3 AND s.slot_date = b.slot_date AND s.slot_time = t.slot_time
      )
      RETURNING id`,
-    [maxBookings, businessDays]
+    [maxBookings, businessDays, tenantId]
   );
   return { inserted: result.rows.length, business_days: businessDays, max_bookings: maxBookings };
 }
 
-async function getAvailableSlots(fromDate, toDate) {
+async function getAvailableSlots(fromDate, toDate, tenantId = 1) {
   const result = await pool.query(
     `SELECT slot_date, slot_time, max_bookings, current_bookings
      FROM available_slots
-     WHERE slot_date BETWEEN $1 AND $2
+     WHERE tenant_id=$3
+       AND slot_date BETWEEN $1 AND $2
        AND is_blocked = FALSE
        AND current_bookings < max_bookings
      ORDER BY slot_date, slot_time`,
-    [fromDate, toDate]
+    [fromDate, toDate, tenantId]
   );
   return result.rows;
 }
 
-async function bookSlot(slotDate, slotTime, leadId, quoteId) {
+async function bookSlot(slotDate, slotTime, leadId, quoteId, tenantId = 1) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // Lock and check the slot
+    // Lock and check the slot (within this tenant's own calendar)
     const slotRes = await client.query(
       `SELECT * FROM available_slots
-       WHERE slot_date=$1 AND slot_time=$2 AND is_blocked=FALSE AND current_bookings < max_bookings
+       WHERE tenant_id=$3 AND slot_date=$1 AND slot_time=$2 AND is_blocked=FALSE AND current_bookings < max_bookings
        FOR UPDATE`,
-      [slotDate, slotTime]
+      [slotDate, slotTime, tenantId]
     );
 
     if (!slotRes.rows.length) {
@@ -77,18 +78,18 @@ async function bookSlot(slotDate, slotTime, leadId, quoteId) {
 
     // Increment bookings
     await client.query(
-      `UPDATE available_slots SET current_bookings=current_bookings+1 WHERE slot_date=$1 AND slot_time=$2`,
-      [slotDate, slotTime]
+      `UPDATE available_slots SET current_bookings=current_bookings+1 WHERE tenant_id=$3 AND slot_date=$1 AND slot_time=$2`,
+      [slotDate, slotTime, tenantId]
     );
 
     const code = generateConfirmationCode();
 
     // Create appointment
     const apptRes = await client.query(
-      `INSERT INTO appointments (lead_id, quote_id, scheduled_date, scheduled_time, confirmation_code)
-       VALUES ($1,$2,$3,$4,$5)
+      `INSERT INTO appointments (tenant_id, lead_id, quote_id, scheduled_date, scheduled_time, confirmation_code)
+       VALUES ($1,$2,$3,$4,$5,$6)
        RETURNING *`,
-      [leadId, quoteId || null, slotDate, slotTime, code]
+      [tenantId, leadId, quoteId || null, slotDate, slotTime, code]
     );
 
     // Update lead status
@@ -126,17 +127,23 @@ async function markConfirmationSent(apptId) {
   );
 }
 
-async function getUpcomingAppointments() {
+async function getUpcomingAppointments(tenantId = 1) {
   const result = await pool.query(
     `SELECT a.*, l.name, l.email, l.phone, l.job_type, l.address, q.total_cents
      FROM appointments a
      JOIN leads l ON l.id = a.lead_id
      LEFT JOIN quotes q ON q.id = a.quote_id
-     WHERE a.scheduled_date >= CURRENT_DATE AND a.status='confirmed'
+     WHERE a.tenant_id=$1 AND a.scheduled_date >= CURRENT_DATE AND a.status='confirmed'
      ORDER BY a.scheduled_date, a.scheduled_time
-     LIMIT 30`
+     LIMIT 30`,
+    [tenantId]
   );
   return result.rows;
 }
 
-module.exports = { getAvailableSlots, bookSlot, getAppointmentByCode, markConfirmationSent, getUpcomingAppointments, ensureUpcomingSlots, SLOT_TIMES };
+async function getAppointmentById(id) {
+  const result = await pool.query('SELECT * FROM appointments WHERE id=$1', [id]);
+  return result.rows[0] || null;
+}
+
+module.exports = { getAvailableSlots, bookSlot, getAppointmentByCode, getAppointmentById, markConfirmationSent, getUpcomingAppointments, ensureUpcomingSlots, SLOT_TIMES };

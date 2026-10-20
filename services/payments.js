@@ -39,15 +39,15 @@ function getBaseUrl() {
   return (process.env.APP_URL || 'https://crewmind1-api.onrender.com').replace(/\/$/, '');
 }
 
-async function getDepositPercent() {
-  const raw = await getSetting('deposit_percent', '20');
+async function getDepositPercent(tenantId = 1) {
+  const raw = await getSetting('deposit_percent', '20', tenantId);
   const pct = parseInt(raw, 10);
   if (Number.isNaN(pct)) return 20;
   return Math.min(100, Math.max(0, pct));
 }
 
 async function computeDepositCents(quote) {
-  const pct = await getDepositPercent();
+  const pct = await getDepositPercent(quote.tenant_id || 1);
   return Math.round((quote.total_cents || 0) * pct / 100);
 }
 

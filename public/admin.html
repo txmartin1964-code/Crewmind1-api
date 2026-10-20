@@ -196,6 +196,38 @@
       </table>
       </div>
     </div>
+
+    <div class="card">
+      <h3>GTM — Prospect pipeline</h3>
+      <p class="small" id="pipelineCounts">Loading…</p>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Business</th><th>Email</th><th>Phone</th><th>Pipeline</th><th>Last contacted</th></tr></thead>
+        <tbody id="prospectsBody"><tr><td colspan="5" class="small">Loading…</td></tr></tbody>
+      </table>
+      </div>
+      <p class="small">Prospects come from the buyer scraper above. Move them through the pipeline as they respond, start trials, pay, or churn. A prospect who signs up with the same email moves to “trial” automatically.</p>
+    </div>
+
+    <div class="card">
+      <h3>GTM — Trial campaigns (email only)</h3>
+      <div class="row">
+        <input type="text" id="cmpName" placeholder="Campaign name (e.g. Fort Worth roofers — October)" style="flex:1; min-width:220px;">
+        <input type="text" id="cmpSubject" placeholder="Subject (honest, no clickbait)" style="flex:1; min-width:220px;">
+      </div>
+      <textarea id="cmpBody" rows="5" placeholder="Email body. Use {{business_name}} and {{trial_url}} — the trial link and a CAN-SPAM footer (physical address + one-click unsubscribe) are added automatically." style="width:100%; box-sizing:border-box; margin-top:8px;"></textarea>
+      <div class="row" style="margin-top:8px;">
+        <button onclick="createCampaign()">Create campaign</button>
+      </div>
+      <p class="msg" id="campaignMsg"></p>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Campaign</th><th>Subject</th><th>Status</th><th>Sent</th><th>Failed</th><th>Suppressed</th><th></th></tr></thead>
+        <tbody id="campaignsBody"><tr><td colspan="7" class="small">No campaigns yet.</td></tr></tbody>
+      </table>
+      </div>
+      <p class="small">Sending refuses to run until your business address is set in Settings (CAN-SPAM footer). Suppressed/unsubscribed addresses are skipped automatically and logged. Email only — never text prospects (TCPA).</p>
+    </div>
   </div>
 
   <script>
@@ -482,8 +514,65 @@
       }
     }
 
+    async function loadProspects() {
+      try {
+        const { prospects, counts } = await api('/api/admin/prospects?limit=100');
+        document.getElementById('pipelineCounts').textContent =
+          Object.entries(counts).map(([k, v]) => `${k}: ${v}`).join(' · ');
+        const statuses = ['new', 'contacted', 'trial', 'paid', 'churned'];
+        document.getElementById('prospectsBody').innerHTML = prospects.length ? prospects.map(p => `<tr>
+          <td><strong>${esc(p.name || 'N/A')}</strong><br><span class="small">${esc(p.address || '')}</span></td>
+          <td>${esc(p.email || '—')}</td>
+          <td>${esc(p.phone || '—')}</td>
+          <td><select onchange="setProspectStatus(${p.id}, this.value)">
+            ${statuses.map(s => `<option value="${s}" ${s === p.pipeline_status ? 'selected' : ''}>${s}</option>`).join('')}
+          </select></td>
+          <td class="small">${p.last_contacted_at ? new Date(p.last_contacted_at).toLocaleDateString() : '—'}</td>
+        </tr>`).join('') : '<tr><td colspan="5" class="small">No prospects yet — run the buyer scraper.</td></tr>';
+      } catch (e) { /* panel stays quiet on load errors */ }
+    }
+
+    async function setProspectStatus(id, status) {
+      try {
+        await api('/api/admin/prospects/' + id, { method: 'PATCH', body: JSON.stringify({ pipeline_status: status }) });
+        loadProspects();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function loadCampaigns() {
+      try {
+        const { campaigns } = await api('/api/admin/campaigns');
+        document.getElementById('campaignsBody').innerHTML = campaigns.length ? campaigns.map(c => `<tr>
+          <td><strong>${esc(c.name)}</strong></td><td>${esc(c.subject)}</td><td>${esc(c.status)}</td>
+          <td>${c.sent_count}</td><td>${c.failed_count}</td><td>${c.suppressed_count}</td>
+          <td><button onclick="sendCampaign(${c.id})">Send / resume</button></td>
+        </tr>`).join('') : '<tr><td colspan="7" class="small">No campaigns yet.</td></tr>';
+      } catch (e) { /* quiet */ }
+    }
+
+    async function createCampaign() {
+      const name = document.getElementById('cmpName').value.trim();
+      const subject = document.getElementById('cmpSubject').value.trim();
+      const body_text = document.getElementById('cmpBody').value.trim();
+      if (!name || !subject || !body_text) { setMsg('campaignMsg', 'Name, subject, and body are all required.', 'warn'); return; }
+      try {
+        const data = await api('/api/admin/campaigns', { method: 'POST', body: JSON.stringify({ name, subject, body_text }) });
+        setMsg('campaignMsg', `Campaign created (draft). Trial link: ${data.trial_url}`, 'ok');
+        loadCampaigns();
+      } catch (e) { setMsg('campaignMsg', e.message, 'err'); }
+    }
+
+    async function sendCampaign(id) {
+      if (!confirm('Send this campaign to all eligible prospects (new/contacted with an email, not suppressed)?')) return;
+      try {
+        const data = await api('/api/admin/campaigns/' + id + '/send', { method: 'POST', body: JSON.stringify({}) });
+        setMsg('campaignMsg', `Done — sent ${data.tally.sent}, failed ${data.tally.failed}, suppressed ${data.tally.suppressed}.`, 'ok');
+        loadCampaigns(); loadProspects();
+      } catch (e) { setMsg('campaignMsg', e.message, 'err'); }
+    }
+
     // Init
-    loadStats(); loadLeads(); loadAppointments(); loadPricing(); loadSettings(); loadContracts();
+    loadStats(); loadLeads(); loadAppointments(); loadPricing(); loadSettings(); loadContracts(); loadProspects(); loadCampaigns();
   </script>
 </body>
 </html>

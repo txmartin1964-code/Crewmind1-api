@@ -24,7 +24,7 @@ const { getAllSettings, setSetting } = require('../db/settings');
 const EDITABLE_SETTINGS = ['deposit_percent', 'business_name', 'business_address', 'business_phone'];
 
 async function readSettings() {
-  const raw = await getAllSettings();
+  const raw = await getAllSettings(1); // operator console = tenant 1
   const pct = parseInt(raw.deposit_percent, 10);
   return {
     deposit_percent: Number.isNaN(pct) ? 20 : pct,
@@ -57,7 +57,7 @@ router.use(requireAdmin);
  */
 router.get('/stats', async (req, res) => {
   try {
-    const counts = await countLeads();
+    const counts = await countLeads(1);
     res.json({ stats: counts });
   } catch (err) {
     console.error('[admin] stats error:', err);
@@ -72,7 +72,7 @@ router.get('/stats', async (req, res) => {
 router.get('/leads', async (req, res) => {
   try {
     const { status, limit } = req.query;
-    const leads = await getLeads({ status, limit: parseInt(limit) || 50 });
+    const leads = await getLeads({ tenantId: 1, status, limit: parseInt(limit) || 50 });
     res.json({ leads });
   } catch (err) {
     console.error('[admin] leads error:', err);
@@ -86,7 +86,7 @@ router.get('/leads', async (req, res) => {
  */
 router.get('/appointments', async (req, res) => {
   try {
-    const appointments = await getUpcomingAppointments();
+    const appointments = await getUpcomingAppointments(1);
     res.json({ appointments });
   } catch (err) {
     console.error('[admin] appointments error:', err);
@@ -100,7 +100,7 @@ router.get('/appointments', async (req, res) => {
  */
 router.get('/pricing', async (req, res) => {
   try {
-    const rules = await getPricingRules();
+    const rules = await getPricingRules(1);
     res.json({ rules });
   } catch (err) {
     console.error('[admin] pricing error:', err);
@@ -115,7 +115,7 @@ router.get('/pricing', async (req, res) => {
 router.patch('/pricing/:id', async (req, res) => {
   try {
     const { base_price_cents, price_per_sqft_cents, notes } = req.body;
-    const rule = await updatePricingRule(req.params.id, { base_price_cents, price_per_sqft_cents, notes });
+    const rule = await updatePricingRule(req.params.id, { base_price_cents, price_per_sqft_cents, notes }, 1);
     if (!rule) return res.status(404).json({ error: 'Pricing rule not found.' });
     res.json({ rule });
   } catch (err) {
@@ -153,7 +153,7 @@ router.patch('/settings', async (req, res) => {
     }
     for (const key of EDITABLE_SETTINGS) {
       if (body[key] !== undefined) {
-        await setSetting(key, key === 'deposit_percent' ? parseInt(body[key], 10) : String(body[key]));
+        await setSetting(key, key === 'deposit_percent' ? parseInt(body[key], 10) : String(body[key]), 1);
       }
     }
     res.json({ settings: await readSettings() });
@@ -173,7 +173,7 @@ router.post('/slots/generate', async (req, res) => {
   try {
     const businessDays = parseInt(req.body?.business_days) || 30;
     const maxBookings = parseInt(req.body?.max_bookings) || 2;
-    const result = await ensureUpcomingSlots({ businessDays, maxBookings });
+    const result = await ensureUpcomingSlots({ tenantId: 1, businessDays, maxBookings });
     res.json({ success: true, ...result });
   } catch (err) {
     console.error('[admin] slot generation error:', err);

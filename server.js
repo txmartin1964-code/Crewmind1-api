@@ -50,11 +50,24 @@ const { requireAdmin } = adminRoutes;
 
 const contractRoutes = require('./routes/contracts');
 
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/signup', require('./routes/signup'));
+app.use('/api/onboarding', require('./routes/onboarding'));
+app.get('/q/:slug', require('./routes/quote-page').quotePageHandler);
+// Billing is mounted BEFORE the general tenant router: a locked tenant
+// must still be able to reach checkout to un-lock themselves.
+app.use('/api/tenant/billing', require('./routes/billing'));
+app.use('/api/tenant', require('./routes/tenant'));
 app.use('/api/leads', require('./routes/leads'));
 app.use('/api/appointments', require('./routes/appointments'));
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/contracts', contractRoutes.publicRouter);
+app.use('/api/change-orders', require('./routes/change-orders'));
+app.use('/api/reviews', require('./routes/reviews'));
 app.use('/api/admin/contracts', contractRoutes.adminRouter);
+const gtmRoutes = require('./routes/gtm');
+app.use('/api/admin', gtmRoutes.adminRouter);
+app.use('/api/gtm', gtmRoutes.publicRouter);
 app.use('/api/admin', adminRoutes);
 
 // -- LANDING PAGE
@@ -76,7 +89,7 @@ app.post('/api/admin/scrape-buyers', requireAdmin, async (req, res) => {
   try {
     const query = `${category} in ${city}`;
     const buyerleads = await runCrewMindScraper(query, 50);
-    const { saved, duplicates } = await saveScrapedLeads(buyerleads, { query, source: 'admin_buyers' });
+    const { saved, duplicates } = await saveScrapedLeads(buyerleads, { query, source: 'admin_buyers', tenantId: 1 });
     console.log(`[scraper] buyers "${query}": ${buyerleads.length} found, ${saved} saved, ${duplicates} duplicate(s) skipped.`);
     res.json({ success: true, count: buyerleads.length, saved, duplicates, leads: buyerleads, buyerleads });
   } catch (error) {
@@ -89,7 +102,7 @@ app.post('/api/client/scrape-leads', requireAdmin, async (req, res) => {
   try {
     const query = `${targetService} quotes near ${targetArea}`;
     const clientleads = await runCrewMindScraper(query, 20);
-    const { saved, duplicates } = await saveScrapedLeads(clientleads, { query, source: 'client_leads' });
+    const { saved, duplicates } = await saveScrapedLeads(clientleads, { query, source: 'client_leads', tenantId: 1 });
     console.log(`[scraper] clients "${query}": ${clientleads.length} found, ${saved} saved, ${duplicates} duplicate(s) skipped.`);
     res.json({ success: true, count: clientleads.length, saved, duplicates, leads: clientleads, clientleads });
   } catch (error) {
@@ -111,7 +124,7 @@ async function startServer() {
   // so log loudly. Also runnable on demand: POST /api/admin/slots/generate.
   try {
     const { ensureUpcomingSlots } = require('./db/appointments');
-    const result = await ensureUpcomingSlots();
+    const result = await ensureUpcomingSlots({ tenantId: 1 });
     console.log(`[slots] availability topped up: ${result.inserted} new slot(s), ${result.business_days} business days covered.`);
   } catch (err) {
     console.error('[slots] FAILED to generate availability slots:', err.message);

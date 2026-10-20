@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Start your free trial — CrewMind</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0f1115; color:#e8eaed; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .card { background:#171a21; border:1px solid #262b36; border-radius:14px; padding:36px; width:100%; max-width:440px; }
+  h1 { font-size:26px; margin-bottom:6px; }
+  .sub { color:#9aa3b2; margin-bottom:24px; font-size:15px; line-height:1.5; }
+  label { display:block; font-size:13px; font-weight:600; color:#c6cdd8; margin:16px 0 6px; }
+  input { width:100%; padding:11px 13px; border-radius:8px; border:1px solid #333a47; background:#10131a; color:#e8eaed; font-size:15px; }
+  input:focus { outline:none; border-color:#ffb347; }
+  button { width:100%; margin-top:26px; padding:13px; border:none; border-radius:9px; background:#ffb347; color:#1a1206; font-size:16px; font-weight:700; cursor:pointer; }
+  button:hover { background:#ffc06b; }
+  button:disabled { opacity:.55; cursor:wait; }
+  .err { display:none; margin-top:16px; background:#3a1d24; border:1px solid #7a2e3d; color:#ffb3c0; padding:11px 13px; border-radius:8px; font-size:14px; }
+  .fine { margin-top:18px; color:#7d8593; font-size:13px; text-align:center; line-height:1.5; }
+  .perks { margin:18px 0 4px; padding:14px 16px; background:#10131a; border:1px solid #262b36; border-radius:10px; font-size:14px; color:#c6cdd8; line-height:1.9; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Start your 14-day free trial</h1>
+    <p class="sub">CrewMind Core — instant quotes, AI lead qualification, booking, contracts, and payments for your trade business. No card required to start.</p>
+    <div class="perks">
+      ✓ 200 AI-qualified leads / month included<br>
+      ✓ 500 prospect searches / month included<br>
+      ✓ Your own quote page, live in minutes<br>
+      ✓ After the trial: $149/mo monthly, or $119/mo billed annually
+    </div>
+    <form id="signupForm">
+      <label for="business_name">Business name</label>
+      <input id="business_name" required autocomplete="organization" placeholder="e.g. Acme Roofing">
+      <label for="owner_name">Your name</label>
+      <input id="owner_name" autocomplete="name" placeholder="e.g. Andy Acme">
+      <label for="email">Work email</label>
+      <input id="email" type="email" required autocomplete="email" placeholder="you@yourbusiness.com">
+      <label for="password">Password (8+ characters)</label>
+      <input id="password" type="password" required minlength="8" autocomplete="new-password">
+      <div class="err" id="err"></div>
+      <button type="submit" id="submitBtn">Create my account</button>
+    </form>
+    <p class="fine">Already have an account? <a href="/app" style="color:#ffb347;">Log in</a></p>
+  </div>
+<script>
+  const campaign = new URLSearchParams(location.search).get('c') || undefined;
+  document.getElementById('signupForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    const err = document.getElementById('err');
+    err.style.display = 'none';
+    btn.disabled = true; btn.textContent = 'Creating your account…';
+    try {
+      const res = await fetch('/api/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          business_name: document.getElementById('business_name').value,
+          owner_name: document.getElementById('owner_name').value,
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value,
+          campaign,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Signup failed.');
+      localStorage.setItem('cm_token', data.token);
+      location.href = '/onboard';
+    } catch (ex) {
+      err.textContent = ex.message;
+      err.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Create my account';
+    }
+  });
+</script>
+</body>
+</html>

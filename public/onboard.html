@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Set up CrewMind — 15 minutes to live</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0f1115; color:#e8eaed; min-height:100vh; display:flex; justify-content:center; padding:28px 16px; }
+  .card { background:#171a21; border:1px solid #262b36; border-radius:14px; padding:32px; width:100%; max-width:620px; align-self:flex-start; }
+  h1 { font-size:24px; margin-bottom:6px; }
+  .sub { color:#9aa3b2; line-height:1.55; font-size:15px; }
+  .steps { display:flex; gap:6px; margin:20px 0 6px; }
+  .steps div { flex:1; height:5px; border-radius:99px; background:#232833; }
+  .steps div.on { background:#ffb347; }
+  label { display:block; font-size:13px; font-weight:600; color:#c6cdd8; margin:14px 0 6px; }
+  input, select, textarea { width:100%; padding:11px 13px; border-radius:8px; border:1px solid #333a47; background:#10131a; color:#e8eaed; font-size:15px; font-family:inherit; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  button { padding:12px 20px; border:none; border-radius:9px; background:#ffb347; color:#1a1206; font-size:15px; font-weight:700; cursor:pointer; }
+  button.ghost { background:#232833; color:#e8eaed; border:1px solid #333a47; }
+  button:disabled { opacity:.55; cursor:wait; }
+  .nav { display:flex; justify-content:space-between; margin-top:26px; }
+  .found { margin-top:14px; padding:14px 16px; border-radius:10px; background:#14301c; border:1px solid #2e7a44; color:#c9f2d4; font-size:14px; line-height:1.6; display:none; }
+  .notfound { margin-top:14px; padding:12px 14px; border-radius:10px; background:#1d222c; border:1px solid #333a47; color:#c6cdd8; font-size:14px; display:none; }
+  .err { display:none; margin-top:14px; background:#3a1d24; border:1px solid #7a2e3d; color:#ffb3c0; padding:11px 13px; border-radius:8px; font-size:14px; }
+  .panel { display:none; } .panel.on { display:block; }
+  .radio { display:flex; gap:10px; align-items:flex-start; padding:13px; border:1px solid #333a47; border-radius:10px; margin-top:10px; cursor:pointer; }
+  .radio input { width:auto; margin-top:3px; }
+  .big { font-size:17px; line-height:1.6; }
+  a { color:#ffb347; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Let's get you live</h1>
+  <p class="sub">Four short steps — most owners finish in under 15 minutes. At the end, your quote page is live and CrewMind starts working your leads.</p>
+  <div class="steps"><div id="dot1" class="on"></div><div id="dot2"></div><div id="dot3"></div><div id="dot4"></div></div>
+
+  <!-- STEP 1: business lookup -->
+  <div class="panel on" id="step1">
+    <h3>1. Find your business</h3>
+    <p class="sub" style="margin-top:6px;">We'll pull your address, phone, and hours from your public Google listing so you don't have to type them.</p>
+    <div class="row">
+      <div><label>Business name</label><input id="biz_name"></div>
+      <div><label>City</label><input id="biz_city" placeholder="e.g. Fort Worth"></div>
+    </div>
+    <div style="margin-top:16px;"><button type="button" id="lookupBtn">Look up my business</button></div>
+    <div class="found" id="foundBox"></div>
+    <div class="notfound" id="notfoundBox">No listing found — no problem. Fill in the basics below and keep going; nothing here can block you.</div>
+    <label>Business address</label><input id="f_address" placeholder="Street, City, ST ZIP">
+    <div class="row">
+      <div><label>Business phone</label><input id="f_phone"></div>
+      <div><label>Website</label><input id="f_website" placeholder="https://…"></div>
+    </div>
+    <label>Business hours</label><textarea id="f_hours" rows="3" placeholder="Mon–Fri 8am–6pm, Sat 9am–2pm"></textarea>
+    <div class="nav"><span></span><button type="button" onclick="go(2)">Continue →</button></div>
+  </div>
+
+  <!-- STEP 2: trade -->
+  <div class="panel" id="step2">
+    <h3>2. What's your trade?</h3>
+    <p class="sub" style="margin-top:6px;">This loads your starting price book — ballpark prices for your trade that you can fine-tune any time in your console.</p>
+    <label>Trade</label>
+    <select id="f_trade">
+      <option value="roofing">Roofing</option>
+      <option value="plumbing">Plumbing</option>
+      <option value="hvac">HVAC</option>
+      <option value="electrical">Electrical</option>
+      <option value="concrete">Concrete</option>
+      <option value="drywall">Drywall</option>
+      <option value="landscaping">Landscaping</option>
+      <option value="painting">Painting</option>
+      <option value="remodeling">Remodeling</option>
+      <option value="flooring">Flooring</option>
+      <option value="handyman">Handyman</option>
+      <option value="other">Other / mixed</option>
+    </select>
+    <div class="nav"><button type="button" class="ghost" onclick="go(1)">← Back</button><button type="button" onclick="go(3)">Continue →</button></div>
+  </div>
+
+  <!-- STEP 3: notifications + service area -->
+  <div class="panel" id="step3">
+    <h3>3. Where do new leads go?</h3>
+    <label>Email for new-lead alerts</label><input id="f_notify_email" type="email">
+    <label>Phone for new-lead texts</label><input id="f_notify_phone" type="tel">
+    <label>Service area</label><input id="f_service_area" placeholder="e.g. Fort Worth + 25 miles, Arlington, Keller">
+    <div class="nav"><button type="button" class="ghost" onclick="go(2)">← Back</button><button type="button" onclick="go(4)">Continue →</button></div>
+  </div>
+
+  <!-- STEP 4: payouts -->
+  <div class="panel" id="step4">
+    <h3>4. Getting paid</h3>
+    <p class="sub" style="margin-top:6px;">CrewMind collects a deposit from your customer when they book (20% by default — you can change it). Pick how to handle payouts:</p>
+    <label class="radio"><input type="radio" name="payout" value="connect" checked>
+      <span><strong>Set up payouts now</strong><br><span class="sub">Recommended. We'll walk your account through payout setup so deposits land in your bank.</span></span></label>
+    <label class="radio"><input type="radio" name="payout" value="skip">
+      <span><strong>Skip for now</strong><br><span class="sub">Deposits still work — they settle through CrewMind and are recorded per job. We'll remind you to connect payouts in your console.</span></span></label>
+    <div class="err" id="err"></div>
+    <div class="nav"><button type="button" class="ghost" onclick="go(3)">← Back</button><button type="button" id="finishBtn">Finish — take my quote page live</button></div>
+  </div>
+
+  <!-- DONE -->
+  <div class="panel" id="stepDone">
+    <h3>🎉 You're live!</h3>
+    <p class="big" style="margin-top:10px;">Your quote page: <a id="quoteLink" href="#" target="_blank"></a></p>
+    <p class="sub" style="margin-top:10px;" id="payoutNote"></p>
+    <p class="sub" style="margin-top:10px;">Put that link on your website, Google profile, and truck. Every request becomes a qualified lead with an instant ballpark quote.</p>
+    <div class="nav"><span></span><button type="button" onclick="location.href='/app'">Go to my console →</button></div>
+  </div>
+</div>
+
+<script>
+const token = localStorage.getItem('cm_token');
+if (!token) location.href = '/app';
+async function api(path, opts = {}) {
+  const res = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token, ...(opts.headers || {}) } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('Request failed: ' + res.status));
+  return data;
+}
+const $ = (id) => document.getElementById(id);
+let placeId = null;
+
+function go(n) {
+  for (let i = 1; i <= 4; i++) {
+    $('step' + i).classList.toggle('on', i === n);
+    $('dot' + i).classList.toggle('on', i <= n);
+  }
+}
+
+(async () => {
+  const me = await api('/api/tenant/me');
+  $('biz_name').value = me.tenant.business_name || '';
+  $('f_notify_email').value = me.tenant.email || '';
+})().catch(() => {});
+
+$('lookupBtn').addEventListener('click', async () => {
+  const btn = $('lookupBtn');
+  btn.disabled = true; btn.textContent = 'Looking…';
+  $('foundBox').style.display = 'none'; $('notfoundBox').style.display = 'none';
+  try {
+    const data = await api('/api/onboarding/prefill?name=' + encodeURIComponent($('biz_name').value) + '&city=' + encodeURIComponent($('biz_city').value));
+    if (data.found) {
+      placeId = data.google_place_id || null;
+      if (data.address) $('f_address').value = data.address;
+      if (data.phone) $('f_phone').value = data.phone;
+      if (data.website) $('f_website').value = data.website;
+      if (data.hours) $('f_hours').value = data.hours;
+      $('foundBox').innerHTML = '✓ Found <strong>' + data.business_name + '</strong> — we filled in what we could below. Fix anything that looks off.';
+      $('foundBox').style.display = 'block';
+    } else {
+      $('notfoundBox').style.display = 'block';
+    }
+  } catch {
+    $('notfoundBox').style.display = 'block';
+  }
+  btn.disabled = false; btn.textContent = 'Look up my business';
+});
+
+$('finishBtn').addEventListener('click', async () => {
+  const btn = $('finishBtn');
+  $('err').style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Finishing…';
+  try {
+    const payout = document.querySelector('input[name="payout"]:checked').value;
+    const data = await api('/api/onboarding/complete', {
+      method: 'POST',
+      body: JSON.stringify({
+        trade: $('f_trade').value,
+        business_address: $('f_address').value,
+        business_phone: $('f_phone').value,
+        website: $('f_website').value,
+        business_hours: $('f_hours').value,
+        notification_email: $('f_notify_email').value,
+        notification_phone: $('f_notify_phone').value,
+        service_area: $('f_service_area').value,
+        google_place_id: placeId,
+        payout,
+      }),
+    });
+    for (let i = 1; i <= 4; i++) { $('step' + i).classList.remove('on'); $('dot' + i).classList.add('on'); }
+    $('stepDone').classList.add('on');
+    const link = $('quoteLink');
+    link.href = data.quote_url;
+    link.textContent = location.origin + data.quote_url;
+    $('payoutNote').textContent = data.payout_note || '';
+  } catch (ex) {
+    $('err').textContent = ex.message;
+    $('err').style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Finish — take my quote page live';
+  }
+});
+</script>
+</body>
+</html>

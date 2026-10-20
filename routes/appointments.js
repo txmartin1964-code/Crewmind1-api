@@ -10,11 +10,30 @@ const router = express.Router();
 const { getAvailableSlots, bookSlot, getAppointmentByCode, markConfirmationSent } = require('../db/appointments');
 const { getLeadById } = require('../db/leads');
 const { getQuoteByLeadId } = require('../db/quotes');
+const { getTenantBySlug } = require('../db/tenants');
 const { sendAppointmentConfirmation } = require('../services/email');
 
 /**
- * GET /api/appointments/slots?from=YYYY-MM-DD&to=YYYY-MM-DD
- * Returns available calendar slots in the given date range.
+ * Resolves the tenant whose calendar is being viewed/booked: an explicit
+ * ?t=<slug> wins, then the lead's tenant, else the operator tenant (1) —
+ * the Phase 1 default.
+ */
+async function resolveTenantId(req, leadId) {
+  if (req.query.t) {
+    const tenant = await getTenantBySlug(req.query.t);
+    if (tenant) return tenant.id;
+  }
+  if (leadId) {
+    const lead = await getLeadById(leadId);
+    if (lead) return lead.tenant_id || 1;
+  }
+  return 1;
+}
+
+/**
+ * GET /api/appointments/slots?from=YYYY-MM-DD&to=YYYY-MM-DD[&t=<slug>]
+ * Returns available calendar slots in the given date range, scoped to
+ * the tenant's own calendar.
  */
 router.get('/slots', async (req, res) => {
   try {
@@ -23,7 +42,8 @@ router.get('/slots', async (req, res) => {
     toDate.setDate(toDate.getDate() + 30);
     const to = req.query.to || toDate.toISOString().slice(0, 10);
 
-    const slots = await getAvailableSlots(from, to);
+    const tenantId = await resolveTenantId(req, req.query.lead ? parseInt(req.query.lead, 10) : null);
+    const slots = await getAvailableSlots(from, to, tenantId);
     res.json({ slots });
   } catch (err) {
     console.error('[appointments] slots error:', err);
@@ -51,7 +71,26 @@ router.post('/book', async (req, res) => {
       return res.status(409).json({ error: 'This lead already has an appointment booked.' });
     }
 
-    const appt = await bookSlot(slot_date, slot_time, lead_id, quote_id || null);
+    const appt = await bookSlot(slot_date, slot_time, lead_id, quote_id || null, lead.tenant_id || 1);
+
+    // A booked appointment becomes a job the tenant can complete and
+    // invoice (Phase 2 Item 4). Non-fatal: booking stands without it.
+    try {
+      const jobsDb = require('../db/jobs');
+      const existing = quote_id ? await jobsDb.getJobByQuoteId(quote_id) : null;
+      if (!existing) {
+        const job = await jobsDb.createJob({
+          tenant_id: lead.tenant_id || 1,
+          lead_id: lead.id,
+          quote_id: quote_id || null,
+          appointment_id: appt.id,
+          title: `${lead.job_type || 'Job'} — ${lead.name}`,
+        });
+        await jobsDb.logJobEvent(job.id, job.tenant_id, 'job_created', { source: 'booking' });
+      }
+    } catch (jobErr) {
+      console.error('[appointments] job creation failed (non-fatal):', jobErr.message);
+    }
 
     // Send confirmation email. sendEmail() reports failure as { ok: false }
     // instead of throwing, so check the result: only mark the confirmation

@@ -8,11 +8,12 @@ const pool = require('./index');
 
 async function createLead(data) {
   const { name, email, phone, job_type, address, city, zip, sqft, timeline, description, photo_urls, ip_address } = data;
+  const tenantId = data.tenant_id || 1;
   const result = await pool.query(
-    `INSERT INTO leads (name, email, phone, job_type, address, city, zip, sqft, timeline, description, photo_urls, ip_address)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+    `INSERT INTO leads (tenant_id, name, email, phone, job_type, address, city, zip, sqft, timeline, description, photo_urls, ip_address)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      RETURNING *`,
-    [name, email, phone || null, job_type, address, city || null, zip || null,
+    [tenantId, name, email, phone || null, job_type, address, city || null, zip || null,
      sqft || null, timeline || null, description || null,
      JSON.stringify(photo_urls || []), ip_address || null]
   );
@@ -35,13 +36,18 @@ async function getLeadById(id) {
   return result.rows[0] || null;
 }
 
-async function getLeads({ status, limit = 50, offset = 0 } = {}) {
+async function getLeads({ tenantId, status, limit = 50, offset = 0 } = {}) {
   const params = [];
-  let where = '';
+  const conditions = [];
+  if (tenantId) {
+    params.push(tenantId);
+    conditions.push(`l.tenant_id=$${params.length}`);
+  }
   if (status) {
     params.push(status);
-    where = `WHERE status=$${params.length}`;
+    conditions.push(`l.status=$${params.length}`);
   }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   params.push(limit, offset);
   const result = await pool.query(
     `SELECT l.*, q.id as quote_id, q.total_cents, q.status as quote_status, q.payment_status, q.amount_paid_cents, a.scheduled_date, a.scheduled_time, a.status as appt_status
@@ -56,7 +62,13 @@ async function getLeads({ status, limit = 50, offset = 0 } = {}) {
   return result.rows;
 }
 
-async function countLeads() {
+async function countLeads(tenantId) {
+  const params = [];
+  let tenantFilter = '';
+  if (tenantId) {
+    params.push(tenantId);
+    tenantFilter = ` AND tenant_id=$${params.length}`;
+  }
   const result = await pool.query(`
     SELECT
       COUNT(*) FILTER (WHERE status='new') as new_count,
@@ -65,8 +77,8 @@ async function countLeads() {
       COUNT(*) FILTER (WHERE status='disqualified') as disqualified_count,
       COUNT(*) as total
     FROM leads
-    WHERE created_at > NOW() - INTERVAL '30 days'
-  `);
+    WHERE created_at > NOW() - INTERVAL '30 days'${tenantFilter}
+  `, params);
   return result.rows[0];
 }
 

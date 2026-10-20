@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Change Order — CrewMind</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f1f5f9; color: #0f172a; margin: 0; padding: 20px; }
+    .wrap { max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 22px; margin-bottom: 4px; }
+    .sub { color: #475569; margin-top: 0; }
+    .card { background: #fff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 20px; margin-bottom: 18px; }
+    pre.doc { white-space: pre-wrap; font-family: inherit; font-size: 15px; line-height: 1.6; margin: 0; }
+    input[type="text"] { width: 100%; box-sizing: border-box; padding: 12px; font-size: 16px; border: 1px solid #94a3b8; border-radius: 6px; margin: 8px 0 14px; }
+    label.agree { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; margin-bottom: 16px; }
+    label.agree input { margin-top: 3px; transform: scale(1.25); }
+    button { background: #0284c7; color: #fff; border: none; padding: 13px 26px; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    button.decline { background: #fff; color: #b91c1c; border: 1px solid #ef4444; margin-left: 10px; }
+    button:disabled { background: #94a3b8; cursor: wait; }
+    .banner { border-radius: 8px; padding: 14px 18px; margin-bottom: 18px; font-size: 15px; }
+    .green { background: #dcfce7; border: 1px solid #22c55e; }
+    .amber { background: #fef9c3; border: 1px solid #eab308; }
+    .red { background: #fee2e2; border: 1px solid #ef4444; }
+    .msg { font-size: 14px; margin-top: 10px; }
+    .err { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Change Order</h1>
+    <p class="sub" id="subtitle">Loading…</p>
+    <div id="banner"></div>
+
+    <div class="card"><pre class="doc" id="docText">Loading the change order…</pre></div>
+
+    <div class="card" id="signCard" style="display:none;">
+      <h2 style="margin-top:0;">Approve this change order</h2>
+      <p>By typing your full legal name and clicking Approve, you agree to the work and amount above. Your typed name is your electronic signature under the ESIGN Act and the Texas Uniform Electronic Transactions Act. The amount is added to your final invoice.</p>
+      <label for="signName">Full legal name</label>
+      <input type="text" id="signName" autocomplete="name" placeholder="e.g. Jane Q. Homeowner">
+      <label class="agree">
+        <input type="checkbox" id="agreeBox">
+        <span>I approve this change order and agree to sign electronically.</span>
+      </label>
+      <button id="signBtn" onclick="signCo()">Approve &amp; sign</button>
+      <button class="decline" id="declineBtn" onclick="declineCo()">Decline</button>
+      <p class="msg" id="signMsg"></p>
+    </div>
+  </div>
+
+  <script>
+    const token = new URLSearchParams(window.location.search).get('c');
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    function banner(html, cls) {
+      document.getElementById('banner').innerHTML = html ? `<div class="banner ${cls}">${html}</div>` : '';
+    }
+
+    async function load() {
+      if (!token) {
+        document.getElementById('subtitle').textContent = 'This link is missing its access token.';
+        banner('This change-order link is incomplete. Please use the exact link from your email.', 'red');
+        return;
+      }
+      try {
+        const res = await fetch('/api/change-orders/view/' + encodeURIComponent(token));
+        if (!res.ok) throw new Error('not found');
+        const { change_order: co } = await res.json();
+        document.getElementById('subtitle').textContent =
+          `Amount $${(co.amount_cents / 100).toFixed(2)} · Status: ${co.status}`;
+        document.getElementById('docText').textContent = co.document || co.description;
+
+        if (co.status === 'approved') {
+          banner(`<strong>Approved</strong> by ${esc(co.signed_name)} on ${new Date(co.signed_at).toLocaleString('en-US')}. This amount is on your final invoice.`, 'green');
+        } else if (co.status === 'declined') {
+          banner('This change order was declined. The work and amount were not added to your invoice.', 'red');
+        } else if (co.status === 'pending') {
+          banner('Please review the change order below, then approve or decline.', 'amber');
+          document.getElementById('signCard').style.display = 'block';
+        }
+      } catch (e) {
+        document.getElementById('subtitle').textContent = 'Change order not found.';
+        banner('We could not find this change order. Please use the exact link from your email.', 'red');
+      }
+    }
+
+    async function signCo() {
+      const name = document.getElementById('signName').value.trim();
+      const agree = document.getElementById('agreeBox').checked;
+      const msg = document.getElementById('signMsg');
+      if (name.length < 2) { msg.textContent = 'Please type your full legal name.'; msg.className = 'msg err'; return; }
+      if (!agree) { msg.textContent = 'Please check the "I agree" box to approve.'; msg.className = 'msg err'; return; }
+      const btn = document.getElementById('signBtn');
+      btn.disabled = true; msg.textContent = '';
+      try {
+        const res = await fetch('/api/change-orders/view/' + encodeURIComponent(token) + '/sign', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ signed_name: name, agree: true }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Signing failed.');
+        document.getElementById('signCard').style.display = 'none';
+        banner(`<strong>Thank you — change order approved.</strong> Signed by ${esc(data.change_order.signed_name)}.`, 'green');
+      } catch (e) {
+        msg.textContent = e.message; msg.className = 'msg err'; btn.disabled = false;
+      }
+    }
+
+    async function declineCo() {
+      if (!confirm('Decline this change order? The work will not be done and nothing will be added to your invoice.')) return;
+      try {
+        const res = await fetch('/api/change-orders/view/' + encodeURIComponent(token) + '/decline', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Decline failed.');
+        document.getElementById('signCard').style.display = 'none';
+        banner('Change order declined. Your contractor has been notified.', 'red');
+      } catch (e) { alert(e.message); }
+    }
+
+    load();
+  </script>
+</body>
+</html>

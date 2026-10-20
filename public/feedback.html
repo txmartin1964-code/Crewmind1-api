@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How did we do?</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0f1115; color:#e8eaed; min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:28px 16px; }
+  .card { background:#171a21; border:1px solid #262b36; border-radius:14px; padding:32px; width:100%; max-width:520px; }
+  h1 { font-size:23px; margin-bottom:8px; }
+  .sub { color:#9aa3b2; line-height:1.55; font-size:15px; }
+  .paths { display:flex; gap:10px; flex-wrap:wrap; margin:20px 0 6px; }
+  .paths a { flex:1; text-align:center; padding:13px; border-radius:9px; font-weight:700; text-decoration:none; min-width:180px; }
+  .google { background:#ffb347; color:#1a1206; }
+  .private { background:#232833; color:#e8eaed; border:1px solid #333a47; }
+  label { display:block; font-size:13px; font-weight:600; color:#c6cdd8; margin:16px 0 6px; }
+  textarea { width:100%; padding:11px 13px; border-radius:8px; border:1px solid #333a47; background:#10131a; color:#e8eaed; font-size:15px; font-family:inherit; }
+  .stars { display:flex; gap:6px; }
+  .stars button { width:44px; height:44px; font-size:22px; border-radius:8px; border:1px solid #333a47; background:#10131a; color:#5b6472; cursor:pointer; }
+  .stars button.on { color:#ffb347; border-color:#ffb347; }
+  .submit { width:100%; margin-top:20px; padding:13px; border:none; border-radius:9px; background:#ffb347; color:#1a1206; font-size:16px; font-weight:700; cursor:pointer; }
+  .submit:disabled { opacity:.55; cursor:wait; }
+  .msg { display:none; margin-top:16px; padding:12px 14px; border-radius:8px; font-size:14px; line-height:1.5; }
+  .msg.err { background:#3a1d24; border:1px solid #7a2e3d; color:#ffb3c0; }
+  .msg.ok { background:#14301c; border:1px solid #2e7a44; color:#a9e8bc; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1 id="title">How did we do?</h1>
+    <p class="sub" id="intro">Thanks for your business. Two quick ways to tell us how the job went — pick either (or both):</p>
+    <div class="paths">
+      <a class="google" id="googleLink" href="#" target="_blank" rel="noopener" style="display:none;">Share on Google</a>
+      <a class="private" href="#feedbackForm">Tell us privately ↓</a>
+    </div>
+    <form id="feedbackForm">
+      <label>How would you rate the job? (optional)</label>
+      <div class="stars" id="stars">
+        <button type="button" data-v="1">★</button>
+        <button type="button" data-v="2">★</button>
+        <button type="button" data-v="3">★</button>
+        <button type="button" data-v="4">★</button>
+        <button type="button" data-v="5">★</button>
+      </div>
+      <label for="feedback_text">Your feedback — goes straight to the business</label>
+      <textarea id="feedback_text" rows="5" placeholder="What went well? What could be better?"></textarea>
+      <div class="msg err" id="err"></div>
+      <div class="msg ok" id="ok"></div>
+      <button class="submit" type="submit" id="submitBtn">Send feedback</button>
+    </form>
+  </div>
+<script>
+  const tokenParam = new URLSearchParams(location.search).get('t');
+  const $ = (id) => document.getElementById(id);
+  let rating = null;
+  $('stars').addEventListener('click', (e) => {
+    const v = e.target && e.target.dataset ? e.target.dataset.v : null;
+    if (!v) return;
+    rating = parseInt(v, 10);
+    document.querySelectorAll('#stars button').forEach(b => b.classList.toggle('on', parseInt(b.dataset.v, 10) <= rating));
+  });
+
+  (async () => {
+    if (!tokenParam) { $('intro').textContent = 'This feedback link is incomplete.'; return; }
+    try {
+      const res = await fetch('/api/reviews/view/' + encodeURIComponent(tokenParam));
+      if (!res.ok) throw new Error('not found');
+      const data = await res.json();
+      $('title').textContent = 'How did ' + data.business_name + ' do?';
+      if (data.google_review_url) {
+        const g = $('googleLink');
+        g.href = data.google_review_url;
+        g.style.display = 'block';
+      }
+      if (data.feedback_submitted) {
+        $('ok').textContent = 'You already sent feedback for this job — thank you!';
+        $('ok').style.display = 'block';
+        $('submitBtn').disabled = true;
+      }
+    } catch {
+      $('intro').textContent = 'We could not find this feedback link. Please use the exact link from your email.';
+    }
+  })();
+
+  $('feedbackForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('err').style.display = 'none';
+    const btn = $('submitBtn');
+    btn.disabled = true; btn.textContent = 'Sending…';
+    try {
+      const res = await fetch('/api/reviews/feedback/' + encodeURIComponent(tokenParam), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedback_text: $('feedback_text').value, feedback_rating: rating }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Something went wrong.');
+      $('ok').textContent = 'Thank you! Your feedback was sent to the business, and a thank-you note is on its way to your inbox.';
+      $('ok').style.display = 'block';
+      btn.textContent = 'Feedback sent ✓';
+    } catch (ex) {
+      $('err').textContent = ex.message;
+      $('err').style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Send feedback';
+    }
+  });
+</script>
+</body>
+</html>

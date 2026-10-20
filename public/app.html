@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CrewMind Console</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0f1115; color:#e8eaed; }
+  .wrap { max-width:1060px; margin:0 auto; padding:28px 20px 60px; }
+  header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:8px; }
+  h1 { font-size:24px; }
+  h2 { font-size:18px; margin:30px 0 12px; }
+  .pill { font-size:12px; font-weight:700; padding:4px 10px; border-radius:999px; background:#233046; color:#9fc2ff; text-transform:uppercase; letter-spacing:.4px; }
+  .pill.trial { background:#3d3413; color:#ffd97a; }
+  .pill.locked, .pill.canceled { background:#3a1d24; color:#ffb3c0; }
+  .pill.past_due { background:#3d2413; color:#ffb37a; }
+  .banner { margin-top:16px; padding:16px 18px; border-radius:10px; background:#241d0d; border:1px solid #6b5716; color:#ffe1a1; line-height:1.55; display:none; }
+  .banner.locked { background:#2b1218; border-color:#7a2e3d; color:#ffc6d0; }
+  .banner button, .btn { margin-top:10px; margin-right:8px; padding:9px 16px; border:none; border-radius:8px; background:#ffb347; color:#1a1206; font-weight:700; cursor:pointer; font-size:14px; }
+  .btn.secondary { background:#232833; color:#e8eaed; border:1px solid #333a47; }
+  .card { background:#171a21; border:1px solid #262b36; border-radius:12px; padding:20px; margin-top:16px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:9px 8px; border-bottom:1px solid #232833; vertical-align:top; }
+  th { color:#9aa3b2; font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
+  .muted { color:#9aa3b2; font-size:13px; }
+  .bar { height:8px; background:#232833; border-radius:99px; overflow:hidden; margin-top:6px; }
+  .bar > div { height:100%; background:#ffb347; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; }
+  label { display:block; font-size:13px; font-weight:600; color:#c6cdd8; margin:12px 0 5px; }
+  input { width:100%; padding:9px 11px; border-radius:8px; border:1px solid #333a47; background:#10131a; color:#e8eaed; font-size:14px; }
+  .login { max-width:420px; margin:70px auto; }
+  .err { display:none; margin-top:14px; background:#3a1d24; border:1px solid #7a2e3d; color:#ffb3c0; padding:10px 12px; border-radius:8px; font-size:14px; }
+  .ok { display:none; margin-top:14px; background:#14301c; border:1px solid #2e7a44; color:#a9e8bc; padding:10px 12px; border-radius:8px; font-size:14px; }
+  .hidden { display:none !important; }
+  a { color:#ffb347; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="wrap login" id="loginView">
+  <div class="card">
+    <h1 style="margin-bottom:6px;">CrewMind Console</h1>
+    <p class="muted">Log in to run your business.</p>
+    <form id="loginForm">
+      <label for="email">Email</label>
+      <input id="email" type="email" required autocomplete="email">
+      <label for="password">Password</label>
+      <input id="password" type="password" required autocomplete="current-password">
+      <div class="err" id="loginErr"></div>
+      <button class="btn" type="submit" style="width:100%;">Log in</button>
+    </form>
+    <p class="muted" style="margin-top:16px;">New to CrewMind? <a href="/signup">Start a free 14-day trial</a></p>
+  </div>
+</div>
+
+<!-- CONSOLE -->
+<div class="wrap hidden" id="consoleView">
+  <header>
+    <div>
+      <h1 id="bizName">Your business</h1>
+      <span class="muted" id="quoteUrl"></span>
+    </div>
+    <div>
+      <span class="pill" id="statusPill">…</span>
+      <button class="btn secondary" id="logoutBtn">Log out</button>
+    </div>
+  </header>
+
+  <div class="banner" id="trialBanner"></div>
+
+  <h2>Usage this month</h2>
+  <div class="grid" id="usageGrid"></div>
+
+  <h2>Leads</h2>
+  <div class="card" style="overflow-x:auto;">
+    <table><thead><tr><th>Customer</th><th>Job</th><th>Status</th><th>AI score</th><th>Received</th></tr></thead>
+    <tbody id="leadsBody"><tr><td class="muted">Loading…</td></tr></tbody></table>
+  </div>
+
+  <h2>Upcoming appointments</h2>
+  <div class="card" style="overflow-x:auto;">
+    <table><thead><tr><th>When</th><th>Customer</th><th>Job</th><th>Confirmation</th></tr></thead>
+    <tbody id="apptsBody"><tr><td class="muted">Loading…</td></tr></tbody></table>
+  </div>
+
+  <h2>Jobs</h2>
+  <div class="card" style="overflow-x:auto;">
+    <table><thead><tr><th>Job</th><th>Customer</th><th>Status</th><th>Quote</th><th>Actions</th></tr></thead>
+    <tbody id="jobsBody"><tr><td class="muted">Loading…</td></tr></tbody></table>
+    <p class="muted" style="margin-top:10px;">Jobs appear here when a customer books. Mark a job complete, then send the final invoice for the balance (quote total + approved change orders − deposit paid).</p>
+    <div id="reviewPrompt"></div>
+  </div>
+
+  <h2>Invoices</h2>
+  <div class="card" style="overflow-x:auto;">
+    <table><thead><tr><th>Number</th><th>Total</th><th>Deposit paid</th><th>Balance due</th><th>Status</th></tr></thead>
+    <tbody id="invoicesBody"><tr><td class="muted">No invoices yet.</td></tr></tbody></table>
+  </div>
+
+  <h2>Reviews &amp; private feedback</h2>
+  <div class="card" style="overflow-x:auto;">
+    <table><thead><tr><th>Customer</th><th>Status</th><th>Rating</th><th>Feedback</th></tr></thead>
+    <tbody id="reviewsBody"><tr><td class="muted">No review requests yet.</td></tr></tbody></table>
+  </div>
+
+  <h2>Your pricing</h2>
+  <div class="card" style="overflow-x:auto;">
+    <table><thead><tr><th>Job type</th><th>Base price ($)</th><th>Per sq ft ($)</th><th></th></tr></thead>
+    <tbody id="pricingBody"><tr><td class="muted">Loading…</td></tr></tbody></table>
+    <p class="muted" style="margin-top:10px;">These prices drive your instant quotes. Edit any row and save.</p>
+  </div>
+
+  <h2>Business settings</h2>
+  <div class="card">
+    <form id="settingsForm">
+      <div class="grid">
+        <div><label>Business name</label><input name="business_name"></div>
+        <div><label>Business phone</label><input name="business_phone"></div>
+        <div><label>Notification email</label><input name="notification_email" type="email"></div>
+        <div><label>Notification phone</label><input name="notification_phone"></div>
+        <div><label>Service area</label><input name="service_area"></div>
+        <div><label>Business hours</label><input name="business_hours"></div>
+        <div><label>Business address</label><input name="business_address"></div>
+        <div><label>Deposit percent (%)</label><input name="deposit_percent" type="number" min="0" max="100"></div>
+        <div><label>Google review link</label><input name="google_review_url" placeholder="https://g.page/r/…"></div>
+        <div><label>Lead overage: allow extra AI-qualified leads past 200/mo (true/false)</label><input name="overage_enabled"></div>
+        <div><label>Max overage leads / month (billed $10–15 each)</label><input name="overage_cap_leads" type="number" min="0"></div>
+      </div>
+      <div class="ok" id="settingsOk">Settings saved.</div>
+      <button class="btn" type="submit">Save settings</button>
+    </form>
+  </div>
+
+  <h2>QuickBooks</h2>
+  <div class="card">
+    <p class="muted">Export your invoices and received payments as CSV files that import straight into QuickBooks Online (Settings → Import Data). One-click QuickBooks sync is on the roadmap — for now, the export takes ten seconds.</p>
+    <div style="margin-top:12px;">
+      <button class="btn secondary" onclick="downloadExport('invoices')">Download invoices CSV</button>
+      <button class="btn secondary" onclick="downloadExport('payments')">Download payments CSV</button>
+    </div>
+    <div class="grid" style="margin-top:8px;">
+      <div><label>QuickBooks Company ID (Realm ID) — for future sync</label><input id="qbo_realm_id" placeholder="Not connected yet"></div>
+      <div><label>QuickBooks connected? (placeholder)</label><input id="qbo_connected" placeholder="false" disabled></div>
+    </div>
+  </div>
+
+  <h2>Billing</h2>
+  <div class="card" id="billingCard">
+    <p class="muted" id="billingSummary">Loading…</p>
+    <div>
+      <button class="btn" id="upgradeMonthly">Subscribe — $149/mo monthly</button>
+      <button class="btn secondary" id="upgradeAnnual">Subscribe — $119/mo billed annually</button>
+    </div>
+    <p class="muted" id="billingNote" style="margin-top:10px;"></p>
+  </div>
+</div>
+
+<script>
+const token = () => localStorage.getItem('cm_token');
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token(), ...(opts.headers || {}) },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) { localStorage.removeItem('cm_token'); location.reload(); }
+  if (!res.ok) throw new Error(data.error || ('Request failed: ' + res.status));
+  return data;
+}
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = (c) => '$' + (Number(c || 0) / 100).toFixed(2);
+
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('loginErr').style.display = 'none';
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: $('email').value, password: $('password').value }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login failed.');
+    localStorage.setItem('cm_token', data.token);
+    location.reload();
+  } catch (ex) {
+    $('loginErr').textContent = ex.message;
+    $('loginErr').style.display = 'block';
+  }
+});
+$('logoutBtn').addEventListener('click', () => { localStorage.removeItem('cm_token'); location.reload(); });
+
+async function loadConsole() {
+  if (!token()) return;
+  $('loginView').classList.add('hidden');
+  $('consoleView').classList.remove('hidden');
+
+  const me = await api('/api/tenant/me');
+  const t = me.tenant;
+  $('bizName').textContent = t.business_name;
+  $('quoteUrl').innerHTML = 'Your quote page: <a href="/q/' + esc(t.slug) + '">/q/' + esc(t.slug) + '</a>';
+  const status = t.effective_status;
+  const pill = $('statusPill');
+  pill.textContent = status + (t.founding_cohort ? ' · founding #' + t.cohort_number : '');
+  pill.className = 'pill ' + status;
+
+  const billing = await api('/api/tenant/billing/status');
+  const banner = $('trialBanner');
+  if (status === 'trial') {
+    const days = Math.max(0, Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 86400000));
+    banner.style.display = 'block';
+    banner.innerHTML = '<strong>Free trial: ' + days + ' day' + (days === 1 ? '' : 's') + ' left.</strong> ' +
+      'Subscribe before it ends to keep taking leads without interruption.' +
+      '<br><button onclick="upgrade(\'monthly\')">Subscribe — $149/mo</button>' +
+      '<button onclick="upgrade(\'annual\')">Subscribe — $119/mo billed annually</button>';
+  } else if (status === 'locked' || status === 'canceled') {
+    banner.style.display = 'block';
+    banner.classList.add('locked');
+    banner.innerHTML = '<strong>Your account is locked.</strong> Your data is safe and read-only. ' +
+      'Subscribe to Core to unlock lead intake, quoting, and booking.' +
+      '<br><button onclick="upgrade(\'monthly\')">Subscribe — $149/mo</button>' +
+      '<button onclick="upgrade(\'annual\')">Subscribe — $119/mo billed annually</button>';
+  } else if (status === 'past_due') {
+    banner.style.display = 'block';
+    banner.innerHTML = '<strong>Payment past due.</strong> Please update your payment method to avoid interruption.';
+  }
+
+  const usage = billing.usage;
+  $('usageGrid').innerHTML = [
+    ['AI-qualified leads', usage.ai_qualified_leads],
+    ['Scraped prospects', usage.scraped_prospects],
+  ].map(([label, u]) => {
+    const pct = Math.min(100, Math.round(100 * u.used / u.included));
+    return '<div class="card"><strong>' + label + '</strong><div class="muted">' + u.used + ' of ' + u.included + ' included used</div>' +
+      '<div class="bar"><div style="width:' + pct + '%"></div></div></div>';
+  }).join('');
+
+  $('billingSummary').textContent =
+    'Plan: Core (' + (t.plan || 'core') + ')' +
+    (billing.prices.founding_price_applies ? ' — founding-cohort $119 rate applies to your account.' : '') +
+    (t.subscription_status ? ' · Subscription: ' + t.subscription_status : '') +
+    (t.current_period_end ? ' · Current period ends ' + new Date(t.current_period_end).toLocaleDateString() : '');
+  if (t.payout_skipped && !t.payout_connected) {
+    $('billingSummary').textContent += ' · ⚠ Payouts not connected yet — deposits settle through CrewMind until you connect payouts.';
+  }
+  if (!t.onboarding_completed_at) {
+    $('billingSummary').textContent += ' · Setup not finished — complete the 15-minute setup to go live.';
+  }
+  $('billingNote').textContent = billing.billing_configured
+    ? 'Checkout is hosted by Stripe. Cancel anytime from your Stripe receipt link or by contacting us.'
+    : 'Billing is not live yet — checkout will appear here when payments are switched on. Your trial is unaffected.';
+
+  const leads = await api('/api/tenant/leads?limit=50');
+  $('leadsBody').innerHTML = leads.leads.length ? leads.leads.map(l =>
+    '<tr><td>' + esc(l.name) + '<br><span class="muted">' + esc(l.email) + '</span></td><td>' + esc(l.job_type) + '</td><td>' +
+    esc(l.qualification_status || l.status) + '</td><td>' + (l.ai_score ?? '—') + '</td><td class="muted">' +
+    new Date(l.created_at).toLocaleDateString() + '</td></tr>').join('')
+    : '<tr><td class="muted">No leads yet — share your quote page link to get the first one.</td></tr>';
+
+  const appts = await api('/api/tenant/appointments');
+  $('apptsBody').innerHTML = appts.appointments.length ? appts.appointments.map(a =>
+    '<tr><td>' + new Date(a.appointment_date).toLocaleString() + '</td><td>' + esc(a.customer_name) + '</td><td>' +
+    esc(a.job_type) + '</td><td>' + esc(a.confirmation_code) + '</td></tr>').join('')
+    : '<tr><td class="muted">No upcoming appointments.</td></tr>';
+
+  await loadJobs();
+
+  const pricing = await api('/api/tenant/pricing');
+  $('pricingBody').innerHTML = pricing.rules.map(r =>
+    '<tr><td>' + esc(r.job_type) + '</td>' +
+    '<td><input style="width:110px" id="base_' + r.id + '" type="number" step="0.01" value="' + (r.base_price_cents / 100) + '"></td>' +
+    '<td><input style="width:110px" id="sqft_' + r.id + '" type="number" step="0.01" value="' + (r.price_per_sqft_cents / 100) + '"></td>' +
+    '<td><button class="btn secondary" onclick="saveRule(' + r.id + ')">Save</button></td></tr>').join('');
+
+  const st = await api('/api/tenant/settings');
+  const form = $('settingsForm');
+  for (const key of Object.keys(st.settings)) {
+    if (form.elements[key]) form.elements[key].value = st.settings[key] ?? '';
+  }
+  if (st.settings.qbo_realm_id) $('qbo_realm_id').value = st.settings.qbo_realm_id;
+  $('qbo_connected').value = st.settings.qbo_connected === 'true' ? 'Connected' : 'Not connected (export only for now)';
+}
+
+$('qbo_realm_id').addEventListener('change', async (e) => {
+  try {
+    await api('/api/tenant/settings', { method: 'PATCH', body: JSON.stringify({ qbo_realm_id: e.target.value }) });
+  } catch (err) { alert(err.message); }
+});
+
+async function loadJobs() {
+  const data = await api('/api/tenant/jobs');
+  $('jobsBody').innerHTML = data.jobs.length ? data.jobs.map(j =>
+    '<tr><td>' + esc(j.title || ('Job #' + j.id)) + '</td><td>' + esc(j.customer_name || '—') + '</td><td>' + esc(j.status) + '</td><td>' +
+    (j.quote_total_cents != null ? money(j.quote_total_cents) : '—') + '</td><td>' +
+    (j.status !== 'completed' && j.status !== 'invoiced' && j.status !== 'paid'
+      ? '<button class="btn secondary" onclick="completeJob(' + j.id + ')">Mark complete</button>' : '') +
+    (j.status === 'completed' || j.status === 'invoiced'
+      ? ' <button class="btn secondary" onclick="sendInvoice(' + j.id + ')">Send final invoice</button>' : '') +
+    (j.status !== 'paid' && j.status !== 'canceled'
+      ? ' <button class="btn secondary" onclick="addChangeOrder(' + j.id + ')">Add change order</button>' : '') +
+    '</td></tr>').join('')
+    : '<tr><td class="muted">No jobs yet.</td></tr>';
+  const rev = await api('/api/tenant/reviews');
+  if (rev.reviews.length) {
+    $('reviewsBody').innerHTML = rev.reviews.map(r =>
+      '<tr><td>' + esc(r.customer_name || '—') + '</td><td>' + esc(r.status) + '</td><td>' +
+      (r.feedback_rating ? '★'.repeat(r.feedback_rating) : '—') + '</td><td>' + esc(r.feedback_text || '') + '</td></tr>').join('');
+  }
+  const inv = await api('/api/tenant/invoices');
+  if (inv.invoices.length) {
+    $('invoicesBody').innerHTML = inv.invoices.map(i =>
+      '<tr><td>' + esc(i.invoice_number || ('#' + i.id)) + '</td><td>' + money(i.total_cents) + '</td><td>' +
+      money(i.deposit_paid_cents) + '</td><td>' + money(i.amount_due_cents) + '</td><td>' + esc(i.status) + '</td></tr>').join('');
+  }
+}
+
+async function completeJob(id) {
+  const data = await api('/api/tenant/jobs/' + id + '/complete', { method: 'POST', body: '{}' });
+  if (data.review_prompt) {
+    $('reviewPrompt').innerHTML = '<div class="banner" style="display:block;margin-top:14px;">Job complete! ' +
+      '<strong>' + esc(data.review_prompt.message) + '</strong><br>' +
+      '<button onclick="sendReview(' + id + ')">Yes, send it</button>' +
+      '<button class="btn secondary" onclick="skipReview(' + id + ')">Skip</button></div>';
+  }
+  await loadJobs();
+}
+
+async function addChangeOrder(jobId) {
+  const description = prompt('Describe the additional / changed work:');
+  if (!description) return;
+  const dollars = prompt('Amount in dollars (added to the final invoice when the customer approves):');
+  const amount = Math.round(parseFloat(dollars || '0') * 100);
+  if (!amount || amount <= 0) { alert('Enter a valid amount.'); return; }
+  const data = await api('/api/tenant/jobs/' + jobId + '/change-orders', {
+    method: 'POST', body: JSON.stringify({ description, amount_cents: amount }),
+  });
+  alert(data.emailed
+    ? 'Change order sent to the customer for approval.'
+    : 'Change order created. Share this approval link with your customer:\n' + data.sign_url);
+}
+
+async function sendInvoice(id) {
+  const data = await api('/api/tenant/jobs/' + id + '/invoice', { method: 'POST', body: JSON.stringify({ send: true }) });
+  alert(data.emailed ? 'Final invoice emailed. Pay link: ' + data.pay_url : 'Invoice ready: ' + data.pay_url);
+  await loadJobs();
+}
+
+async function sendReview(jobId) {
+  try {
+    const data = await api('/api/tenant/jobs/' + jobId + '/review', { method: 'POST', body: '{}' });
+    $('reviewPrompt').innerHTML = '<p class="muted" style="margin-top:12px;">Review request sent to ' + esc(data.sent_to || 'the customer') + '.</p>';
+  } catch (ex) { alert(ex.message); }
+}
+
+async function skipReview(jobId) {
+  try { await api('/api/tenant/jobs/' + jobId + '/review/skip', { method: 'POST', body: '{}' }); } catch {}
+  $('reviewPrompt').innerHTML = '';
+}
+
+async function downloadExport(kind) {
+  const res = await fetch('/api/tenant/exports/quickbooks/' + kind + '.csv', {
+    headers: { Authorization: 'Bearer ' + token() },
+  });
+  if (!res.ok) { alert('Export failed.'); return; }
+  const blob = await res.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'crewmind-' + kind + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+async function saveRule(id) {
+  const dollars = (id2) => Math.round(parseFloat(document.getElementById(id2).value || '0') * 100);
+  await api('/api/tenant/pricing/' + id, {
+    method: 'PATCH',
+    body: JSON.stringify({ base_price_cents: dollars('base_' + id), price_per_sqft_cents: dollars('sqft_' + id) }),
+  });
+  alert('Price saved.');
+}
+
+async function upgrade(interval) {
+  try {
+    const data = await api('/api/tenant/billing/checkout', { method: 'POST', body: JSON.stringify({ interval }) });
+    location.href = data.url;
+  } catch (ex) {
+    alert(ex.message);
+  }
+}
+
+$('settingsForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const body = {};
+  for (const el of e.target.elements) if (el.name) body[el.name] = el.value;
+  await api('/api/tenant/settings', { method: 'PATCH', body: JSON.stringify(body) });
+  $('settingsOk').style.display = 'block';
+  setTimeout(() => $('settingsOk').style.display = 'none', 2500);
+});
+
+$('upgradeMonthly').addEventListener('click', () => upgrade('monthly'));
+$('upgradeAnnual').addEventListener('click', () => upgrade('annual'));
+
+if (token()) loadConsole().catch(err => { console.error(err); alert(err.message); });
+</script>
+</body>
+</html>
