@@ -42,6 +42,39 @@ async function getQuoteByLeadId(leadId) {
   return result.rows[0] || null;
 }
 
+async function getQuoteById(id) {
+  const result = await pool.query('SELECT * FROM quotes WHERE id=$1', [id]);
+  return result.rows[0] || null;
+}
+
+async function setQuoteCheckoutSession(quoteId, sessionId) {
+  const result = await pool.query(
+    `UPDATE quotes SET stripe_checkout_session_id=$1, updated_at=NOW()
+     WHERE id=$2 RETURNING *`,
+    [sessionId, quoteId]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Records a completed payment against a quote (called from the Stripe
+ * webhook). Sets paid_at only on the transition into a paid state.
+ */
+async function markQuotePayment(quoteId, { paymentStatus, amountPaidCents, stripePaymentIntentId }) {
+  const result = await pool.query(
+    `UPDATE quotes
+     SET payment_status=$1,
+         amount_paid_cents=$2,
+         stripe_payment_intent_id=$3,
+         paid_at=CASE WHEN paid_at IS NULL THEN NOW() ELSE paid_at END,
+         updated_at=NOW()
+     WHERE id=$4
+     RETURNING *`,
+    [paymentStatus, amountPaidCents, stripePaymentIntentId || null, quoteId]
+  );
+  return result.rows[0];
+}
+
 async function getPricingRules() {
   const result = await pool.query(
     'SELECT * FROM pricing_rules WHERE is_active=TRUE ORDER BY display_name'
@@ -60,4 +93,7 @@ async function updatePricingRule(id, { base_price_cents, price_per_sqft_cents, n
   return result.rows[0];
 }
 
-module.exports = { createQuote, updateQuoteStatus, getQuoteByLeadId, getPricingRules, updatePricingRule };
+module.exports = {
+  createQuote, updateQuoteStatus, getQuoteByLeadId, getQuoteById,
+  setQuoteCheckoutSession, markQuotePayment, getPricingRules, updatePricingRule,
+};

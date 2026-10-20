@@ -12,10 +12,14 @@ const FormData = require('form-data');
 const router = express.Router();
 
 const { createLead, updateLeadQualification, getLeadById } = require('../db/leads');
-const { createQuote } = require('../db/quotes');
+const { createQuote, updateQuoteStatus } = require('../db/quotes');
 const { qualifyLead } = require('../services/lead-qualify');
 const { generateQuote } = require('../services/quote-engine');
-const { sendLeadAck, sendQuoteWithBookingLink, registerContact } = require('../services/email');
+const { sendLeadAck, sendQuoteWithBookingLink } = require('../services/email');
+const {
+  isStripeConfigured, createOrReuseCheckoutSession, computeDepositCents, getPaymentLinkUrl,
+} = require('../services/payments');
+const { ensureContractForQuote } = require('../services/contracts');
 
 // Multer: memory storage only (Render filesystem is ephemeral)
 const upload = multer({
@@ -78,9 +82,6 @@ router.post('/', upload.array('photos', 5), async (req, res) => {
       ip_address: req.ip,
     });
 
-    // Register contact for email deliverability
-    registerContact({ email, name, source: 'contact_form' }).catch(() => {});
-
     // Send acknowledgement email (non-blocking)
     sendLeadAck(lead).catch(err => console.error('[leads] ack email failed:', err.message));
 
@@ -109,10 +110,45 @@ async function qualifyAndQuote(lead) {
       const quoteData = await generateQuote(updatedLead);
       const quote = await createQuote(quoteData);
 
+      // 2b. Auto-create a draft contract from the quote (idempotent).
+      //     Non-fatal: a contract can also be created later from the
+      //     admin console, so a failure here must not break the pipeline.
+      try {
+        await ensureContractForQuote(updatedLead, quote);
+      } catch (contractErr) {
+        console.error(`[leads] draft contract creation failed for quote ${quote.id}:`, contractErr.message);
+      }
+
       // 3. Send quote + booking link for qualified leads
       if (updatedLead.status === 'qualified') {
-        const bookingUrl = `${process.env.APP_URL || 'https://crewmind-10.polsia.app'}/book?lead=${lead.id}&quote=${quote.id}`;
-        await sendQuoteWithBookingLink(updatedLead, quote, bookingUrl);
+        const bookingUrl = `${process.env.APP_URL || 'https://crewmind1-api.onrender.com'}/book?lead=${lead.id}&quote=${quote.id}`;
+
+        // Deposit payment link — only when Stripe is configured. Creating
+        // the session now stores its id on the quote; the emailed URL is
+        // our stable redirector, which reuses the live session at click
+        // time. A Stripe failure must never block the quote email.
+        let payment = null;
+        if (isStripeConfigured()) {
+          try {
+            const session = await createOrReuseCheckoutSession(updatedLead, quote);
+            if (session) {
+              payment = {
+                url: getPaymentLinkUrl(quote.id),
+                deposit_cents: await computeDepositCents(quote),
+              };
+            }
+          } catch (payErr) {
+            console.error(`[leads] could not create checkout session for quote ${quote.id}:`, payErr.message);
+          }
+        }
+
+        const emailResult = await sendQuoteWithBookingLink(updatedLead, quote, bookingUrl, payment);
+        if (emailResult && emailResult.ok) {
+          // Only now is the quote actually 'sent' — keep its status honest.
+          await updateQuoteStatus(quote.id, 'sent');
+        } else {
+          console.error(`[leads] quote email NOT sent for lead ${lead.id} (quote ${quote.id}) — email service reported failure. Quote remains 'draft' so the failure is visible.`);
+        }
       }
     }
   } catch (err) {

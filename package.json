@@ -7,7 +7,6 @@
     "postinstall": "npx puppeteer browsers install chrome"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.26.0",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "form-data": "^4.0.0",
@@ -16,6 +15,7 @@
     "pg": "^8.11.3",
     "puppeteer": "^22.10.0",
     "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "stripe": "^23.0.0"
   }
 }

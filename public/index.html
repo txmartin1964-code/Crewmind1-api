@@ -441,25 +441,8 @@
 </div>
 
 <footer>
-    &copy; 2026 CrewMind &middot; Built by Polsia
+    &copy; 2026 CrewMind
 </footer>
 
-
-    <!-- Polsia Analytics -->
-    <script>
-    (function() {
-        var slug = 'crewmind-10';
-        if (!slug) return;
-        var vid = localStorage.getItem('polsia_vid');
-        if (!vid) {
-            vid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                var r = Math.random() * 16 | 0;
-                return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-            });
-            localStorage.setItem('polsia_vid', vid);
-        }
-        new Image().src = 'https://polsia.com/api/beacon/pixel?s=' + encodeURIComponent(slug) + '&v=' + encodeURIComponent(vid);
-    })();
-    </script>
 </body>
 </html>

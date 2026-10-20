@@ -11,6 +11,40 @@ function generateConfirmationCode() {
   return 'CM' + crypto.randomBytes(4).toString('hex').toUpperCase();
 }
 
+// Daily estimate-visit windows offered to customers. Times are labels in
+// the business's local time (slot_time is stored/served as a plain string).
+const SLOT_TIMES = ['08:00', '10:00', '13:00', '15:00'];
+
+/**
+ * Tops up available_slots so the next `businessDays` business days
+ * (Mon–Fri, starting today) each have every SLOT_TIMES window available.
+ * Idempotent: existing (slot_date, slot_time) rows are skipped, so it is
+ * safe to run at every startup and on demand from the admin console.
+ * Returns { inserted, business_days, max_bookings }.
+ */
+async function ensureUpcomingSlots({ businessDays = 30, maxBookings = 2 } = {}) {
+  const result = await pool.query(
+    `WITH biz_days AS (
+       SELECT d::date AS slot_date
+       FROM generate_series(CURRENT_DATE, CURRENT_DATE + INTERVAL '62 days', INTERVAL '1 day') AS d
+       WHERE EXTRACT(ISODOW FROM d) < 6
+       ORDER BY d
+       LIMIT $2
+     )
+     INSERT INTO available_slots (slot_date, slot_time, max_bookings)
+     SELECT b.slot_date, t.slot_time, $1
+     FROM biz_days b
+     CROSS JOIN (VALUES ('08:00'), ('10:00'), ('13:00'), ('15:00')) AS t(slot_time)
+     WHERE NOT EXISTS (
+       SELECT 1 FROM available_slots s
+       WHERE s.slot_date = b.slot_date AND s.slot_time = t.slot_time
+     )
+     RETURNING id`,
+    [maxBookings, businessDays]
+  );
+  return { inserted: result.rows.length, business_days: businessDays, max_bookings: maxBookings };
+}
+
 async function getAvailableSlots(fromDate, toDate) {
   const result = await pool.query(
     `SELECT slot_date, slot_time, max_bookings, current_bookings
@@ -105,4 +139,4 @@ async function getUpcomingAppointments() {
   return result.rows;
 }
 
-module.exports = { getAvailableSlots, bookSlot, getAppointmentByCode, markConfirmationSent, getUpcomingAppointments };
+module.exports = { getAvailableSlots, bookSlot, getAppointmentByCode, markConfirmationSent, getUpcomingAppointments, ensureUpcomingSlots, SLOT_TIMES };

@@ -53,13 +53,21 @@ router.post('/book', async (req, res) => {
 
     const appt = await bookSlot(slot_date, slot_time, lead_id, quote_id || null);
 
-    // Send confirmation email
+    // Send confirmation email. sendEmail() reports failure as { ok: false }
+    // instead of throwing, so check the result: only mark the confirmation
+    // sent when it actually went out. The booking itself still stands either
+    // way (non-fatal), but the admin console must not claim an email was
+    // sent when it wasn't.
     try {
-      await sendAppointmentConfirmation(appt, lead);
-      await markConfirmationSent(appt.id);
+      const emailResult = await sendAppointmentConfirmation(appt, lead);
+      if (emailResult && emailResult.ok) {
+        await markConfirmationSent(appt.id);
+      } else {
+        console.error(`[appointments] CONFIRMATION EMAIL NOT SENT for appointment ${appt.id} (code ${appt.confirmation_code}, lead ${lead_id}) — email service reported failure. confirmation_sent_at left NULL so the gap is visible in the admin console.`);
+      }
     } catch (emailErr) {
-      console.error('[appointments] confirmation email failed:', emailErr.message);
-      // Non-fatal
+      console.error(`[appointments] CONFIRMATION EMAIL FAILED for appointment ${appt.id} (code ${appt.confirmation_code}, lead ${lead_id}):`, emailErr.message);
+      // Non-fatal — booking stands, confirmation_sent_at stays NULL.
     }
 
     res.json({

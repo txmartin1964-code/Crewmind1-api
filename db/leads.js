@@ -44,9 +44,9 @@ async function getLeads({ status, limit = 50, offset = 0 } = {}) {
   }
   params.push(limit, offset);
   const result = await pool.query(
-    `SELECT l.*, q.total_cents, q.status as quote_status, a.scheduled_date, a.scheduled_time, a.status as appt_status
+    `SELECT l.*, q.id as quote_id, q.total_cents, q.status as quote_status, q.payment_status, q.amount_paid_cents, a.scheduled_date, a.scheduled_time, a.status as appt_status
      FROM leads l
-     LEFT JOIN LATERAL (SELECT total_cents, status FROM quotes WHERE lead_id=l.id ORDER BY id DESC LIMIT 1) q ON TRUE
+     LEFT JOIN LATERAL (SELECT id, total_cents, status, payment_status, amount_paid_cents FROM quotes WHERE lead_id=l.id ORDER BY id DESC LIMIT 1) q ON TRUE
      LEFT JOIN LATERAL (SELECT scheduled_date, scheduled_time, status FROM appointments WHERE lead_id=l.id ORDER BY id DESC LIMIT 1) a ON TRUE
      ${where}
      ORDER BY l.created_at DESC

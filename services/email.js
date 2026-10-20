@@ -53,12 +53,6 @@ async function sendEmail({ to, subject, body, html, reply_to }) {
   return { ok: true };
 }
 
-// Resend delivers directly; there is no contact-registration step.
-// Kept as a no-op so existing call sites don't change.
-async function registerContact() {
-  return { ok: true };
-}
-
 /**
  * Sends a lead submission acknowledgement to the homeowner.
  */
@@ -77,17 +71,28 @@ You'll hear from us within 24 hours with a quote and available appointment times
 
 /**
  * Sends quote + booking link to the homeowner.
+ * payment (optional): { url, deposit_cents } — when present, a
+ * "Pay deposit" section is included alongside the booking link.
  */
-async function sendQuoteWithBookingLink(lead, quote, bookingUrl) {
+async function sendQuoteWithBookingLink(lead, quote, bookingUrl, payment) {
   const totalDollars = (quote.total_cents / 100).toFixed(2);
   const subject = `Your estimate is ready — Book your appointment`;
-  const body = `Hi ${lead.name},\n\nYour estimate for ${lead.job_type.replace(/_/g, ' ')} is ready.\n\nEstimated total: $${totalDollars}\nValid for 14 days.\n\nBook your free on-site estimate here:\n${bookingUrl}\n\n— CrewMind`;
+
+  let paymentText = '';
+  let paymentHtml = '';
+  if (payment && payment.url && payment.deposit_cents > 0) {
+    const depositDollars = (payment.deposit_cents / 100).toFixed(2);
+    paymentText = `\nReserve your spot with a deposit of $${depositDollars}:\n${payment.url}\n`;
+    paymentHtml = `<strong>Deposit due: $${depositDollars}</strong><br><a href="${payment.url}">Pay deposit →</a><br><br>`;
+  }
+
+  const body = `Hi ${lead.name},\n\nYour estimate for ${lead.job_type.replace(/_/g, ' ')} is ready.\n\nEstimated total: $${totalDollars}\nValid for 14 days.\n${paymentText}\nBook your free on-site estimate here:\n${bookingUrl}\n\n— CrewMind`;
   const html = `
 Hi ${lead.name},<br><br>
 Your estimate for <strong>${lead.job_type.replace(/_/g, ' ')}</strong> is ready.<br><br>
 <strong>Estimated Total: $${totalDollars}</strong><br>
 Valid for 14 days.<br><br>
-<a href="${bookingUrl}">Book your free on-site estimate →</a><br><br>
+${paymentHtml}<a href="${bookingUrl}">Book your free on-site estimate →</a><br><br>
 This estimate is valid for 14 days. Pricing may be adjusted after the on-site visit.<br><br>
 — CrewMind
 `;
@@ -123,4 +128,33 @@ Need to reschedule? Reply to this email or call us directly.<br><br>
   return sendEmail({ to: lead.email || appt.email, subject, body, html });
 }
 
-module.exports = { sendEmail, registerContact, sendLeadAck, sendQuoteWithBookingLink, sendAppointmentConfirmation };
+/**
+ * Sends the customer the link to view and sign their contract.
+ * payment (optional): { url, deposit_cents } — when present and the
+ * deposit is unpaid, a "Pay deposit" line is included too.
+ */
+async function sendContractLink(contract, signUrl, payment) {
+  const totalDollars = (contract.total_cents / 100).toFixed(2);
+  const subject = `Your contract is ready to sign — ${contract.contract_number}`;
+
+  let paymentText = '';
+  let paymentHtml = '';
+  if (payment && payment.url && payment.deposit_cents > 0) {
+    const depositDollars = (payment.deposit_cents / 100).toFixed(2);
+    paymentText = `\nYour deposit of $${depositDollars} can be paid here:\n${payment.url}\n`;
+    paymentHtml = `Your deposit of <strong>$${depositDollars}</strong> can be paid here:<br><a href="${payment.url}">Pay deposit →</a><br><br>`;
+  }
+
+  const body = `Hi ${contract.customer_name},\n\nYour service agreement (${contract.contract_number}) for ${contract.title} is ready.\n\nTotal: $${totalDollars}\n\nReview and sign it here:\n${signUrl}\n${paymentText}\n— CrewMind`;
+  const html = `
+Hi ${contract.customer_name},<br><br>
+Your service agreement (<strong>${contract.contract_number}</strong>) for ${contract.title} is ready.<br><br>
+<strong>Total: $${totalDollars}</strong><br><br>
+<a href="${signUrl}">Review and sign your contract →</a><br><br>
+${paymentHtml}— CrewMind
+`;
+
+  return sendEmail({ to: contract.customer_email, subject, body, html });
+}
+
+module.exports = { sendEmail, sendLeadAck, sendQuoteWithBookingLink, sendAppointmentConfirmation, sendContractLink };

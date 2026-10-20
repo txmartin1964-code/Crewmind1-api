@@ -3,113 +3,487 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CrewMind Control Panel</title>
+  <title>CrewMind Admin Console</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; }
-    .container { max-width: 1100px; margin: 0 auto; }
-    h1 { color: #38bdf8; margin-bottom: 8px; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { color: #38bdf8; margin-bottom: 4px; }
+    h3 { margin-top: 0; }
+    .sub { color: #94a3b8; margin-top: 0; }
     .card { background: #1e293b; border-radius: 8px; padding: 20px; margin-bottom: 24px; border: 1px solid #334155; }
-    .form-group { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
-    input { flex: 1; min-width: 200px; padding: 10px 14px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; font-size: 14px; }
-    button { background: #0284c7; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; }
-    button:disabled { background: #475569; }
-    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-    th, td { text-align: left; padding: 12px; border-bottom: 1px solid #334155; }
-    th { background: #0f172a; color: #94a3b8; }
-    .status { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; background: #0369a1; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    input, select, textarea { padding: 9px 12px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; font-size: 14px; }
+    input[type="number"] { width: 110px; }
+    button { background: #0284c7; color: white; border: none; padding: 9px 18px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; }
+    button:disabled { background: #475569; cursor: wait; }
+    button.secondary { background: #334155; }
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #334155; vertical-align: top; }
+    th { background: #0f172a; color: #94a3b8; white-space: nowrap; }
+    .badge { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; background: #0369a1; white-space: nowrap; }
+    .badge.green { background: #166534; } .badge.amber { background: #92400e; } .badge.red { background: #991b1b; } .badge.gray { background: #475569; }
+    .statgrid { display: flex; gap: 14px; flex-wrap: wrap; }
+    .stat { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 14px 20px; min-width: 110px; }
+    .stat .num { font-size: 26px; font-weight: bold; color: #38bdf8; }
+    .stat .lbl { color: #94a3b8; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+    .msg { font-size: 14px; margin-top: 10px; min-height: 18px; }
+    .err { color: #f87171; } .ok { color: #4ade80; } .warn { color: #facc15; } .info { color: #38bdf8; }
+    .banner { display: none; background: #7f1d1d; border: 1px solid #ef4444; color: #fecaca; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; }
+    a { color: #38bdf8; }
+    .small { font-size: 12px; color: #94a3b8; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>CrewMind Control Panel</h1>
-    <p style="color: #94a3b8;">Scraper Engine & Buyer Lead Operations</p>
-
-    <!-- Scraper Control Card -->
-    <div class="card">
-      <h3>Run Buyer Lead Scraper</h3>
-      <div class="form-group">
-        <input type="text" id="category" placeholder="Industry (e.g. commercial contractors)">
-        <input type="text" id="city" placeholder="Location (e.g. Dallas TX)">
-        <button id="runBtn" onclick="triggerScrape()">Run Scraper</button>
+    <div class="row" style="justify-content: space-between;">
+      <div>
+        <h1>CrewMind Admin Console</h1>
+        <p class="sub">Lead pipeline, pricing, availability, payments &amp; scraper operations</p>
       </div>
-      <p id="statusMsg" style="margin-top: 10px; font-size: 14px;"></p>
+      <button class="secondary" onclick="changeToken()">Change admin token</button>
     </div>
 
-    <!-- Scraped Leads Table -->
+    <div class="banner" id="configBanner">Admin API is not configured on the server (ADMIN_TOKEN is not set). Set ADMIN_TOKEN in the Render dashboard, then reload.</div>
+
+    <!-- Stats -->
     <div class="card">
-      <h3>Scraped Target Leads</h3>
+      <h3>Pipeline — last 30 days</h3>
+      <div class="statgrid" id="statGrid"><span class="small">Loading…</span></div>
+      <p class="msg" id="statsMsg"></p>
+    </div>
+
+    <!-- Leads -->
+    <div class="card">
+      <div class="row" style="justify-content: space-between;">
+        <h3 style="margin:0;">Leads</h3>
+        <div class="row">
+          <select id="leadStatus">
+            <option value="">All statuses</option>
+            <option value="new">New</option>
+            <option value="qualified">Qualified</option>
+            <option value="booked">Booked</option>
+            <option value="disqualified">Disqualified</option>
+          </select>
+          <button onclick="loadLeads()">Refresh</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
       <table>
         <thead>
-          <tr>
-            <th>Company Name</th>
-            <th>Phone</th>
-            <th>Website</th>
-            <th>Status</th>
-          </tr>
+          <tr><th>ID</th><th>Received</th><th>Customer</th><th>Job</th><th>Status</th><th>AI score</th><th>Quote</th><th>Payment</th><th>Appointment</th><th>Actions</th></tr>
         </thead>
-        <tbody id="leadsTable">
-          <tr><td colspan="4" style="color: #94a3b8;">No lead data loaded yet. Run a scrape above.</td></tr>
-        </tbody>
+        <tbody id="leadsBody"><tr><td colspan="10" class="small">Loading…</td></tr></tbody>
       </table>
+      </div>
+      <p class="msg" id="leadsMsg"></p>
+    </div>
+
+    <!-- Appointments -->
+    <div class="card">
+      <div class="row" style="justify-content: space-between;">
+        <h3 style="margin:0;">Upcoming appointments</h3>
+        <button onclick="loadAppointments()">Refresh</button>
+      </div>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Time</th><th>Customer</th><th>Job</th><th>Code</th><th>Confirmation sent</th></tr>
+        </thead>
+        <tbody id="apptBody"><tr><td colspan="6" class="small">Loading…</td></tr></tbody>
+      </table>
+      </div>
+      <p class="msg" id="apptMsg"></p>
+    </div>
+
+    <!-- Pricing -->
+    <div class="card">
+      <div class="row" style="justify-content: space-between;">
+        <h3 style="margin:0;">Pricing rules</h3>
+        <button onclick="loadPricing()">Refresh</button>
+      </div>
+      <p class="small">Quotes are generated as base price + (per-sq-ft rate × job sq ft). Edit in dollars, save per row.</p>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr><th>Job type</th><th>Base price $</th><th>Per sq ft $</th><th>Notes</th><th></th></tr>
+        </thead>
+        <tbody id="pricingBody"><tr><td colspan="5" class="small">Loading…</td></tr></tbody>
+      </table>
+      </div>
+      <p class="msg" id="pricingMsg"></p>
+    </div>
+
+    <!-- Contracts -->
+    <div class="card">
+      <div class="row" style="justify-content: space-between;">
+        <h3 style="margin:0;">Contracts</h3>
+        <button onclick="loadContracts()">Refresh</button>
+      </div>
+      <p class="small">A draft contract is created automatically with every quote. Send it to the customer to sign online; signed contracts lock and cannot be edited or voided. The built-in contract template is a starting point only — <strong>not legal advice</strong>; have a Texas attorney review it.</p>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr><th>Number</th><th>Customer</th><th>Total</th><th>Deposit</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="contractsBody"><tr><td colspan="6" class="small">Loading…</td></tr></tbody>
+      </table>
+      </div>
+      <div id="contractDetail" class="small" style="margin-top:10px;"></div>
+      <p class="msg" id="contractsMsg"></p>
+    </div>
+
+    <!-- Settings (payments + business identity) -->
+    <div class="card" id="settingsCard">
+      <h3>Settings</h3>
+      <div class="row">
+        <label>Deposit percent of quote total
+          <input type="number" id="depositPercent" min="0" max="100" step="1" style="margin-left:8px;">
+        </label>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <label style="flex:1; min-width:200px;">Business name
+          <input type="text" id="bizName" style="width:100%; margin-top:4px;">
+        </label>
+        <label style="flex:1; min-width:200px;">Business phone
+          <input type="text" id="bizPhone" style="width:100%; margin-top:4px;">
+        </label>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <label style="flex:1;">Business address
+          <input type="text" id="bizAddress" style="width:100%; margin-top:4px;">
+        </label>
+        <button onclick="saveSettings()">Save settings</button>
+      </div>
+      <p class="small">Customers are asked to pay the deposit percent of their quote total via Stripe Checkout (the rest is due on completion). Requires STRIPE_SECRET_KEY on the server. Business name/address/phone appear on contracts and are used in customer emails.</p>
+      <p class="msg" id="settingsMsg"></p>
+    </div>
+
+    <!-- Availability -->
+    <div class="card">
+      <h3>Booking availability</h3>
+      <div class="row">
+        <label>Business days <input type="number" id="slotDays" value="30" min="1" max="90"></label>
+        <label>Max bookings / slot <input type="number" id="slotMax" value="2" min="1" max="10"></label>
+        <button onclick="generateSlots()">Top up slots</button>
+      </div>
+      <p class="small">Generates 08:00 / 10:00 / 13:00 / 15:00 windows for the next N business days (Mon–Fri). Existing slots are skipped — safe to re-run.</p>
+      <p class="msg" id="slotsMsg"></p>
+    </div>
+
+    <!-- Scraper -->
+    <div class="card">
+      <h3>Scraper — buyer leads</h3>
+      <div class="row">
+        <input type="text" id="scrapeCategory" placeholder="Industry (e.g. commercial contractors)" style="flex:1; min-width:200px;">
+        <input type="text" id="scrapeCity" placeholder="Location (e.g. Dallas TX)" style="flex:1; min-width:160px;">
+        <button id="buyerScrapeBtn" onclick="runScrape('buyers')">Run buyer scrape</button>
+      </div>
+      <p class="msg" id="buyerScrapeMsg"></p>
+    </div>
+
+    <div class="card">
+      <h3>Scraper — client leads</h3>
+      <div class="row">
+        <input type="text" id="scrapeService" placeholder="Service (e.g. roof repair)" style="flex:1; min-width:200px;">
+        <input type="text" id="scrapeArea" placeholder="Area (e.g. Fort Worth TX)" style="flex:1; min-width:160px;">
+        <button id="clientScrapeBtn" onclick="runScrape('clients')">Run client scrape</button>
+      </div>
+      <p class="msg" id="clientScrapeMsg"></p>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Business</th><th>Phone</th><th>Website</th></tr></thead>
+        <tbody id="scrapeBody"><tr><td colspan="3" class="small">No scrape results yet this session.</td></tr></tbody>
+      </table>
+      </div>
     </div>
   </div>
 
   <script>
-    async function triggerScrape() {
-      const category = document.getElementById('category').value;
-      const city = document.getElementById('city').value;
-      const runBtn = document.getElementById('runBtn');
-      const statusMsg = document.getElementById('statusMsg');
+    const TOKEN_KEY = 'cm_admin_token';
 
-      if (!category || !city) {
-        alert('Please fill out both category and location.');
-        return;
+    function getToken() {
+      let t = sessionStorage.getItem(TOKEN_KEY);
+      if (!t) {
+        t = prompt('Enter the admin token (ADMIN_TOKEN):');
+        if (t) sessionStorage.setItem(TOKEN_KEY, t);
       }
+      return t;
+    }
+    function changeToken() {
+      sessionStorage.removeItem(TOKEN_KEY);
+      location.reload();
+    }
 
-      runBtn.disabled = true;
-      statusMsg.innerText = 'Scraper active... running Google Maps crawl (takes 15–30s).';
-      statusMsg.style.color = '#38bdf8';
+    async function api(path, options = {}) {
+      const token = getToken();
+      const res = await fetch(path, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: 'Bearer ' + token } : {}),
+          ...(options.headers || {}),
+        },
+      });
+      if (res.status === 503) {
+        document.getElementById('configBanner').style.display = 'block';
+        throw new Error('Admin API not configured (503)');
+      }
+      if (res.status === 401) {
+        sessionStorage.removeItem(TOKEN_KEY);
+        throw new Error('Unauthorized — token rejected. Reload to enter a new token.');
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('Request failed: ' + res.status));
+      return data;
+    }
 
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const money = cents => cents == null ? '—' : '$' + (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const setMsg = (id, text, cls) => { const el = document.getElementById(id); el.textContent = text || ''; el.className = 'msg ' + (cls || ''); };
+
+    function statusBadge(status) {
+      const map = { qualified: 'green', booked: 'green', new: 'amber', disqualified: 'red' };
+      return `<span class="badge ${map[status] || 'gray'}">${esc(status || 'unknown')}</span>`;
+    }
+    function paymentBadge(lead) {
+      const ps = lead.payment_status;
+      if (!ps) return '<span class="small">—</span>';
+      const map = { deposit_paid: 'green', paid: 'green', unpaid: 'gray', refunded: 'red' };
+      const paid = lead.amount_paid_cents ? ` · ${money(lead.amount_paid_cents)}` : '';
+      return `<span class="badge ${map[ps] || 'gray'}">${esc(ps.replace(/_/g, ' '))}</span>${paid}`;
+    }
+
+    async function loadStats() {
       try {
-        const response = await fetch('/api/admin/scrape-buyers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ category, city })
-        });
+        const { stats } = await api('/api/admin/stats');
+        document.getElementById('statGrid').innerHTML = [
+          ['New', stats.new_count], ['Qualified', stats.qualified_count],
+          ['Booked', stats.booked_count], ['Disqualified', stats.disqualified_count],
+          ['Total (30d)', stats.total],
+        ].map(([lbl, num]) => `<div class="stat"><div class="num">${num ?? 0}</div><div class="lbl">${lbl}</div></div>`).join('');
+        setMsg('statsMsg', '');
+      } catch (e) { setMsg('statsMsg', e.message, 'err'); }
+    }
 
-        const data = await response.json();
-        runBtn.disabled = false;
+    async function loadLeads() {
+      const status = document.getElementById('leadStatus').value;
+      try {
+        const { leads } = await api('/api/admin/leads?limit=100' + (status ? '&status=' + encodeURIComponent(status) : ''));
+        const body = document.getElementById('leadsBody');
+        if (!leads.length) { body.innerHTML = '<tr><td colspan="10" class="small">No leads found.</td></tr>'; return; }
+        body.innerHTML = leads.map(l => `<tr>
+          <td>${l.id}</td>
+          <td>${new Date(l.created_at).toLocaleDateString('en-US')}</td>
+          <td><strong>${esc(l.name)}</strong><br><span class="small">${esc(l.email)}${l.phone ? '<br>' + esc(l.phone) : ''}<br>${esc(l.address || '')}</span></td>
+          <td>${esc((l.job_type || '').replace(/_/g, ' '))}</td>
+          <td>${statusBadge(l.status)}${l.qualification_status === 'manual_review' ? '<br><span class="badge amber">manual review</span>' : ''}</td>
+          <td>${l.ai_score ?? '—'}</td>
+          <td>${money(l.total_cents)}${l.quote_status ? `<br><span class="small">${esc(l.quote_status)}</span>` : ''}</td>
+          <td>${paymentBadge(l)}</td>
+          <td>${l.scheduled_date ? esc(String(l.scheduled_date).slice(0, 10)) + ' ' + esc(l.scheduled_time || '') : '—'}</td>
+          <td>${l.quote_id ? `<button class="secondary" onclick="createContract(${l.quote_id})">Contract</button>` : '<span class="small">no quote</span>'}</td>
+        </tr>`).join('');
+        setMsg('leadsMsg', '');
+      } catch (e) { setMsg('leadsMsg', e.message, 'err'); }
+    }
 
-        const leads = data.leads || data.buyerleads;
-        if (response.ok && leads && leads.length > 0) {
-          statusMsg.innerText = `Success! Captured ${leads.length} leads.`;
-          statusMsg.style.color = '#4ade80';
-          renderLeads(leads);
-        } else if (response.ok && leads && leads.length === 0) {
-          statusMsg.innerText = 'Scrape complete, but no businesses were found for that search query.';
-          statusMsg.style.color = '#facc15';
-        } else {
-          statusMsg.innerText = 'Scrape completed with warning. Check Render logs for details.';
-          statusMsg.style.color = '#facc15';
+    async function loadAppointments() {
+      try {
+        const { appointments } = await api('/api/admin/appointments');
+        const body = document.getElementById('apptBody');
+        if (!appointments.length) { body.innerHTML = '<tr><td colspan="6" class="small">No upcoming appointments.</td></tr>'; return; }
+        body.innerHTML = appointments.map(a => `<tr>
+          <td>${esc(String(a.scheduled_date).slice(0, 10))}</td>
+          <td>${esc(a.scheduled_time || '')}</td>
+          <td><strong>${esc(a.name || '')}</strong><br><span class="small">${esc(a.email || '')}</span></td>
+          <td>${esc((a.job_type || '').replace(/_/g, ' '))}</td>
+          <td>${esc(a.confirmation_code || '')}</td>
+          <td>${a.confirmation_sent_at ? 'Yes' : '<span class="warn">No</span>'}</td>
+        </tr>`).join('');
+        setMsg('apptMsg', '');
+      } catch (e) { setMsg('apptMsg', e.message, 'err'); }
+    }
+
+    async function loadPricing() {
+      try {
+        const { rules } = await api('/api/admin/pricing');
+        const body = document.getElementById('pricingBody');
+        if (!rules.length) { body.innerHTML = '<tr><td colspan="5" class="small">No pricing rules found.</td></tr>'; return; }
+        body.innerHTML = rules.map(r => `<tr>
+          <td><strong>${esc(r.display_name || r.job_type)}</strong><br><span class="small">${esc(r.job_type)}</span></td>
+          <td><input type="number" step="0.01" min="0" id="base-${r.id}" value="${(r.base_price_cents / 100).toFixed(2)}"></td>
+          <td><input type="number" step="0.01" min="0" id="sqft-${r.id}" value="${(r.price_per_sqft_cents / 100).toFixed(2)}"></td>
+          <td><input type="text" id="notes-${r.id}" value="${esc(r.notes || '')}" style="width:100%; min-width:180px;"></td>
+          <td><button onclick="savePricing(${r.id})">Save</button></td>
+        </tr>`).join('');
+        setMsg('pricingMsg', '');
+      } catch (e) { setMsg('pricingMsg', e.message, 'err'); }
+    }
+
+    async function savePricing(id) {
+      const base = Math.round(parseFloat(document.getElementById('base-' + id).value || '0') * 100);
+      const sqft = Math.round(parseFloat(document.getElementById('sqft-' + id).value || '0') * 100);
+      const notes = document.getElementById('notes-' + id).value;
+      try {
+        await api('/api/admin/pricing/' + id, { method: 'PATCH', body: JSON.stringify({ base_price_cents: base, price_per_sqft_cents: sqft, notes }) });
+        setMsg('pricingMsg', 'Pricing saved.', 'ok');
+      } catch (e) { setMsg('pricingMsg', e.message, 'err'); }
+    }
+
+    async function loadSettings() {
+      try {
+        const { settings } = await api('/api/admin/settings');
+        if (settings) {
+          if (settings.deposit_percent != null) document.getElementById('depositPercent').value = settings.deposit_percent;
+          document.getElementById('bizName').value = settings.business_name || '';
+          document.getElementById('bizAddress').value = settings.business_address || '';
+          document.getElementById('bizPhone').value = settings.business_phone || '';
         }
-      } catch (err) {
-        runBtn.disabled = false;
-        statusMsg.innerText = 'Error triggering scraper endpoint.';
-        statusMsg.style.color = '#f87171';
+      } catch (e) { setMsg('settingsMsg', e.message, 'err'); }
+    }
+
+    async function saveSettings() {
+      const pct = parseInt(document.getElementById('depositPercent').value, 10);
+      if (isNaN(pct) || pct < 0 || pct > 100) { setMsg('settingsMsg', 'Deposit percent must be between 0 and 100.', 'err'); return; }
+      try {
+        await api('/api/admin/settings', { method: 'PATCH', body: JSON.stringify({
+          deposit_percent: pct,
+          business_name: document.getElementById('bizName').value,
+          business_address: document.getElementById('bizAddress').value,
+          business_phone: document.getElementById('bizPhone').value,
+        }) });
+        setMsg('settingsMsg', 'Settings saved.', 'ok');
+      } catch (e) { setMsg('settingsMsg', e.message, 'err'); }
+    }
+
+    function contractBadge(status) {
+      const map = { signed: 'green', sent: 'amber', draft: 'gray', void: 'red' };
+      return `<span class="badge ${map[status] || 'gray'}">${esc(status || '')}</span>`;
+    }
+
+    async function loadContracts() {
+      try {
+        const { contracts } = await api('/api/admin/contracts?limit=100');
+        const body = document.getElementById('contractsBody');
+        if (!contracts.length) { body.innerHTML = '<tr><td colspan="6" class="small">No contracts yet. Contracts are drafted automatically with each quote, or use the Contract button on a lead.</td></tr>'; return; }
+        body.innerHTML = contracts.map(c => `<tr>
+          <td><strong>${esc(c.contract_number || '')}</strong><br><span class="small">${esc(c.title || '')}</span></td>
+          <td>${esc(c.customer_name || '')}<br><span class="small">${esc(c.customer_email || '')}</span></td>
+          <td>${money(c.total_cents)}</td>
+          <td>${money(c.deposit_cents)}</td>
+          <td>${contractBadge(c.status)}${c.status === 'signed' ? `<br><span class="small">${new Date(c.signed_at).toLocaleDateString('en-US')}</span>` : ''}</td>
+          <td>
+            <button class="secondary" onclick="viewContract(${c.id})">Details</button>
+            ${c.status === 'draft' || c.status === 'sent' ? `<button class="secondary" onclick="sendContract(${c.id})">${c.status === 'sent' ? 'Re-send' : 'Send'}</button>` : ''}
+            ${c.status !== 'signed' && c.status !== 'void' ? `<button class="secondary" onclick="voidContract(${c.id})">Void</button>` : ''}
+          </td>
+        </tr>`).join('');
+        setMsg('contractsMsg', '');
+      } catch (e) { setMsg('contractsMsg', e.message, 'err'); }
+    }
+
+    async function createContract(quoteId) {
+      try {
+        const { contract } = await api('/api/admin/contracts', { method: 'POST', body: JSON.stringify({ quote_id: quoteId }) });
+        setMsg('contractsMsg', `Contract ${contract.contract_number} ready (${contract.status}).`, 'ok');
+        loadContracts();
+      } catch (e) { setMsg('contractsMsg', e.message, 'err'); }
+    }
+
+    async function sendContract(id) {
+      try {
+        const { contract } = await api(`/api/admin/contracts/${id}/send`, { method: 'POST', body: '{}' });
+        setMsg('contractsMsg', `Contract ${contract.contract_number} sent to ${contract.customer_email}.`, 'ok');
+        loadContracts();
+      } catch (e) { setMsg('contractsMsg', e.message, 'err'); }
+    }
+
+    async function voidContract(id) {
+      if (!confirm('Void this contract? The signing link will stop working.')) return;
+      try {
+        await api(`/api/admin/contracts/${id}/void`, { method: 'POST', body: '{}' });
+        setMsg('contractsMsg', 'Contract voided.', 'ok');
+        loadContracts();
+      } catch (e) { setMsg('contractsMsg', e.message, 'err'); }
+    }
+
+    async function viewContract(id) {
+      const el = document.getElementById('contractDetail');
+      try {
+        const { contract, sign_url } = await api('/api/admin/contracts/' + id);
+        let html = `<strong>${esc(contract.contract_number)}</strong> — ${esc(contract.title || '')}<br>
+          Signing page: <a href="${esc(sign_url)}" target="_blank" rel="noopener">${esc(sign_url)}</a><br>
+          <a href="#" onclick="downloadPdf(${contract.id}, '${esc(contract.contract_number)}'); return false;">Download PDF</a>`;
+        if (contract.status === 'signed') {
+          html += `<br>Signed by: <strong>${esc(contract.signed_name || '')}</strong> on ${new Date(contract.signed_at).toLocaleString('en-US')}
+            <br>Signer IP: ${esc(contract.signer_ip || '')} · User agent: ${esc(contract.signer_user_agent || '')}
+            <br>Document SHA-256: <span style="font-family:monospace;">${esc(contract.document_sha256 || '')}</span>`;
+        }
+        el.innerHTML = html;
+      } catch (e) { setMsg('contractsMsg', e.message, 'err'); }
+    }
+
+    async function downloadPdf(id, number) {
+      try {
+        const token = getToken();
+        const res = await fetch(`/api/admin/contracts/${id}/pdf`, { headers: { Authorization: 'Bearer ' + token } });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'PDF failed');
+        }
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `contract-${number}.pdf`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      } catch (e) { setMsg('contractsMsg', e.message + ' Tip: open the signing page and use Print → Save as PDF.', 'err'); }
+    }
+
+    async function generateSlots() {
+      const business_days = parseInt(document.getElementById('slotDays').value, 10) || 30;
+      const max_bookings = parseInt(document.getElementById('slotMax').value, 10) || 2;
+      try {
+        const data = await api('/api/admin/slots/generate', { method: 'POST', body: JSON.stringify({ business_days, max_bookings }) });
+        setMsg('slotsMsg', `Done — ${data.inserted} new slot(s) added across the next ${data.business_days} business days.`, 'ok');
+      } catch (e) { setMsg('slotsMsg', e.message, 'err'); }
+    }
+
+    async function runScrape(kind) {
+      const isBuyers = kind === 'buyers';
+      const btn = document.getElementById(isBuyers ? 'buyerScrapeBtn' : 'clientScrapeBtn');
+      const msgId = isBuyers ? 'buyerScrapeMsg' : 'clientScrapeMsg';
+      const path = isBuyers ? '/api/admin/scrape-buyers' : '/api/client/scrape-leads';
+      const payload = isBuyers
+        ? { category: document.getElementById('scrapeCategory').value, city: document.getElementById('scrapeCity').value }
+        : { targetService: document.getElementById('scrapeService').value, targetArea: document.getElementById('scrapeArea').value };
+      if (Object.values(payload).some(v => !v)) { setMsg(msgId, 'Fill in both fields first.', 'warn'); return; }
+
+      btn.disabled = true;
+      setMsg(msgId, 'Scraper running — Google Maps crawl takes 15–30s…', 'info');
+      try {
+        const data = await api(path, { method: 'POST', body: JSON.stringify(payload) });
+        const leads = data.leads || [];
+        const counts = (data.saved != null)
+          ? ` ${data.saved} new lead(s) saved, ${data.duplicates ?? 0} duplicate(s) skipped.`
+          : '';
+        setMsg(msgId, leads.length ? `Done — ${leads.length} result(s).${counts}` : `Scrape finished, no businesses found.${counts}`, leads.length ? 'ok' : 'warn');
+        if (leads.length) {
+          document.getElementById('scrapeBody').innerHTML = leads.map(l => `<tr>
+            <td><strong>${esc(l.name || 'N/A')}</strong></td>
+            <td>${esc(l.phone || 'N/A')}</td>
+            <td>${l.website ? `<a href="${esc(l.website)}" target="_blank" rel="noopener">Website</a>` : 'N/A'}</td>
+          </tr>`).join('');
+        }
+      } catch (e) {
+        setMsg(msgId, e.message, 'err');
+      } finally {
+        btn.disabled = false;
       }
     }
 
-    function renderLeads(leads) {
-      const table = document.getElementById('leadsTable');
-      table.innerHTML = leads.map(lead => `
-        <tr>
-          <td><strong>${lead.name || 'N/A'}</strong></td>
-          <td>${lead.phone || 'N/A'}</td>
-          <td>${lead.website ? `<a href="${lead.website}" target="_blank" style="color:#38bdf8;">Link</a>` : 'N/A'}</td>
-          <td><span class="status">New Lead</span></td>
-        </tr>
-      `).join('');
-    }
+    // Init
+    loadStats(); loadLeads(); loadAppointments(); loadPricing(); loadSettings(); loadContracts();
   </script>
 </body>
 </html>

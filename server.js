@@ -7,6 +7,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { runCrewMindScraper } = require('./scraperService.js');
+const { saveScrapedLeads } = require('./db/scraped-leads');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -20,9 +21,17 @@ if (!process.env.DATABASE_URL) {
 // -- CORS & PARSING MIDDLEWARE
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// -- STRIPE WEBHOOK (mounted BEFORE the JSON parser, on purpose)
+// Stripe signature verification needs the exact raw request body, so this
+// one route gets express.raw(). body-parser marks the request as parsed,
+// so the global JSON parser below skips this path and all other JSON
+// routes are unaffected.
+const paymentsRoutes = require('./routes/payments');
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), paymentsRoutes.webhook);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -31,44 +40,58 @@ app.use(express.urlencoded({ extended: true }));
 app.get('/health', (req, res) => res.json({ status: 'healthy' }));
 
 // -- STATIC FILES
-app.use(express.static(path.join(__dirname, 'public')));
+// extensions:['html'] lets clean URLs like /book and /get-quote resolve to
+// book.html / get-quote.html — emailed booking links use the /book form.
+app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 
 // -- API ROUTES
+const adminRoutes = require('./routes/admin');
+const { requireAdmin } = adminRoutes;
+
+const contractRoutes = require('./routes/contracts');
+
 app.use('/api/leads', require('./routes/leads'));
 app.use('/api/appointments', require('./routes/appointments'));
-app.use('/api/admin', require('./routes/admin'));
+app.use('/api/payments', paymentsRoutes);
+app.use('/api/contracts', contractRoutes.publicRouter);
+app.use('/api/admin/contracts', contractRoutes.adminRouter);
+app.use('/api/admin', adminRoutes);
 
 // -- LANDING PAGE
 app.get('/', (req, res) => {
   const htmlPath = path.join(__dirname, 'public', 'index.html');
   if (fs.existsSync(htmlPath)) {
-    let html = fs.readFileSync(htmlPath, 'utf8');
-    const slug = process.env.POLSIA_ANALYTICS_SLUG || '';
-    html = html.replace('__POLSIA_SLUG__', slug);
-    res.type('html').send(html);
+    res.type('html').send(fs.readFileSync(htmlPath, 'utf8'));
   } else {
     res.json({ message: 'CrewMind - Lead to Booking Engine' });
   }
 });
 
 // -- SCRAPER ENDPOINTS
-app.post('/api/admin/scrape-buyers', async (req, res) => {
+// Both scraper endpoints require the admin token: they burn real server
+// resources (headless Chrome) and harvest contact data, so they are not
+// public. Fails closed (503) when ADMIN_TOKEN is unset, like the admin API.
+app.post('/api/admin/scrape-buyers', requireAdmin, async (req, res) => {
   const { category, city } = req.body;
   try {
     const query = `${category} in ${city}`;
     const buyerleads = await runCrewMindScraper(query, 50);
-    res.json({ success: true, count: buyerleads.length, leads: buyerleads, buyerleads });
+    const { saved, duplicates } = await saveScrapedLeads(buyerleads, { query, source: 'admin_buyers' });
+    console.log(`[scraper] buyers "${query}": ${buyerleads.length} found, ${saved} saved, ${duplicates} duplicate(s) skipped.`);
+    res.json({ success: true, count: buyerleads.length, saved, duplicates, leads: buyerleads, buyerleads });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-app.post('/api/client/scrape-leads', async (req, res) => {
+app.post('/api/client/scrape-leads', requireAdmin, async (req, res) => {
   const { targetService, targetArea } = req.body;
   try {
     const query = `${targetService} quotes near ${targetArea}`;
     const clientleads = await runCrewMindScraper(query, 20);
-    res.json({ success: true, leads: clientleads });
+    const { saved, duplicates } = await saveScrapedLeads(clientleads, { query, source: 'client_leads' });
+    console.log(`[scraper] clients "${query}": ${clientleads.length} found, ${saved} saved, ${duplicates} duplicate(s) skipped.`);
+    res.json({ success: true, count: clientleads.length, saved, duplicates, leads: clientleads, clientleads });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -81,6 +104,17 @@ async function startServer() {
   } catch (err) {
     console.error('Migration failed - aborting startup:', err.message);
     process.exit(1);
+  }
+
+  // Top up booking availability (next 30 business days). Non-fatal: the
+  // server still runs without it, but booking would have nothing to offer,
+  // so log loudly. Also runnable on demand: POST /api/admin/slots/generate.
+  try {
+    const { ensureUpcomingSlots } = require('./db/appointments');
+    const result = await ensureUpcomingSlots();
+    console.log(`[slots] availability topped up: ${result.inserted} new slot(s), ${result.business_days} business days covered.`);
+  } catch (err) {
+    console.error('[slots] FAILED to generate availability slots:', err.message);
   }
 
   app.listen(port, () => {

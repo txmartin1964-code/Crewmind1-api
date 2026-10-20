@@ -14,6 +14,22 @@ module.exports = {
   name: '001_lead_pipeline_schema',
 
   up: async (client) => {
+    // 0. Base leads table. This migration originally assumed the platform
+    //    had already created it; on a fresh database the ALTER below fails
+    //    and the server cannot boot at all. Create the base table (the
+    //    columns the old platform owned) if it is missing — a no-op on
+    //    databases that already have it.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leads (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255),
+        email VARCHAR(255),
+        phone VARCHAR(50),
+        status VARCHAR(50) DEFAULT 'new',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
     // 1. Columns that db/leads.js createLead() / updateLeadQualification() write.
     await client.query(`
       ALTER TABLE leads
