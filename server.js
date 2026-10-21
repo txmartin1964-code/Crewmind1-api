@@ -2,6 +2,13 @@
  * server.js - CrewMind Backend Entry Point
  */
 
+// Puppeteer cache: Render does not carry the default ~/.cache/puppeteer from
+// build into the runtime filesystem, so Chrome must live in the deployed
+// project directory (package.json's postinstall installs it there). This must
+// be set before any require pulls in puppeteer. An externally set
+// PUPPETEER_CACHE_DIR still wins.
+process.env.PUPPETEER_CACHE_DIR = process.env.PUPPETEER_CACHE_DIR || require('path').join(__dirname, '.cache', 'puppeteer');
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
