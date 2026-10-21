@@ -39,6 +39,7 @@ Settings that change at runtime live in the `app_settings` table **per tenant** 
 - **Trial expiry locks the account**: console goes read-only, public quote intake refuses new leads, and billing stays reachable so the tenant can subscribe to unlock. Subscription webhooks drive status: `active` / `past_due` / `locked`.
 - **Included monthly allowances per tenant**: 200 AI-qualified leads and 500 scraped prospects. A lead counts only when the AI scores it and does **not** disqualify it — spam/disqualified leads never count and are never charged. Past 200, tenants may opt in to overage ($10–15/lead) with their own monthly ceiling; prospects are hard-capped at 500.
 - **Payouts**: job deposits and invoice balances currently settle through the platform Stripe account and are recorded per tenant/job. Per-tenant Stripe Connect payouts are offered during onboarding as a step tenants may skip (a reminder flag stays on their console); true Connect onboarding is a later phase.
+- **Lifetime comps (operator-only)**: the operator can grant any tenant a free-forever comp from the admin console's **Tenants** section ("Grant lifetime" / "Revoke comp" buttons; API: `GET /api/admin/tenants`, `POST /api/admin/tenants/:id/comp`, `POST /api/admin/tenants/:id/uncomp`). The comp is an **overlay**, not a status: `tenants.is_comped` / `comped_at` (migration 012) make `effectiveStatus()` report `active` regardless of the stored status or trial clock, and granting/revoking **never rewrites the stored status** — revoke cleanly restores whatever the tenant's trial/subscription state says. Stripe subscription events still record bookkeeping for a comped tenant but can never move their status, and billing checkout politely declines with a "lifetime comp" message instead of creating a session. Usage caps still apply in full (200 AI-qualified leads + 500 prospects/mo) — a comp is free, not unlimited. `/api/admin/stats` reports lead-pipeline counts only (no paying-customer count exists there), so comped tenants are excluded from revenue simply by never entering Stripe billing.
 
 ## QuickBooks
 
@@ -79,6 +80,7 @@ Operator GTM (in the admin console):
 - `GET/POST /api/admin/suppressions`, public `GET/POST /api/gtm/unsubscribe?e=&s=`
 
 Admin (all require `Authorization: Bearer <ADMIN_TOKEN>`; console at `/admin.html`):
+- `GET /api/admin/tenants`, `POST /api/admin/tenants/:id/comp`, `POST /api/admin/tenants/:id/uncomp` — tenant list (stored + effective status, comp state, cohort) and lifetime-comp grant/revoke
 - `GET /api/admin/stats`, `GET /api/admin/leads`, `GET /api/admin/appointments`
 - `GET /api/admin/pricing`, `PATCH /api/admin/pricing/:id`
 - `GET /api/admin/settings`, `PATCH /api/admin/settings`

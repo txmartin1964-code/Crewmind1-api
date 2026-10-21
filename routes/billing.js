@@ -27,6 +27,8 @@ router.get('/status', async (req, res) => {
     res.json({
       status: effectiveStatus(t),
       stored_status: t.status,
+      is_comped: !!t.is_comped,
+      comped_at: t.comped_at || null,
       plan: t.plan,
       billing_interval: t.billing_interval,
       founding_cohort: t.founding_cohort,
@@ -52,6 +54,14 @@ router.get('/status', async (req, res) => {
 
 router.post('/checkout', async (req, res) => {
   try {
+    // Lifetime comp (migration 012): a comped tenant never needs a Stripe
+    // session. Answer politely instead of sending them to checkout.
+    if (req.tenant.is_comped) {
+      return res.json({
+        comped: true,
+        message: 'This account is on a lifetime comp — no payment needed. Enjoy CrewMind!',
+      });
+    }
     const interval = (req.body && req.body.interval === 'annual') ? 'annual' : 'monthly';
     if (!billing.isBillingConfigured()) {
       return res.status(503).json({

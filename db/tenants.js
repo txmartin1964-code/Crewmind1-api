@@ -76,6 +76,7 @@ const UPDATABLE_FIELDS = [
   'trial_started_at', 'trial_ends_at', 'stripe_customer_id',
   'stripe_subscription_id', 'subscription_status', 'current_period_end',
   'onboarding_completed_at', 'payout_connected', 'payout_skipped',
+  'is_comped', 'comped_at',
 ];
 
 async function updateTenant(id, fields) {
@@ -91,13 +92,29 @@ async function updateTenant(id, fields) {
 }
 
 /**
+ * Grant or revoke a lifetime comp (migration 012). The comp is an overlay:
+ * ONLY is_comped/comped_at change here — the tenant's stored status is
+ * never rewritten, so revoking restores exactly the state their trial or
+ * subscription dictates.
+ */
+async function setTenantComp(id, comped) {
+  return updateTenant(id, comped
+    ? { is_comped: true, comped_at: new Date().toISOString() }
+    : { is_comped: false, comped_at: null });
+}
+
+/**
  * The status the rest of the app should act on. A trial whose end date has
  * passed behaves as locked even if no job has flipped the stored status
  * yet — expiry is computed, not cron-dependent.
+ *
+ * A comped tenant (is_comped) is always 'active': the comp overlays the
+ * stored status and the trial clock without ever modifying them.
  */
 function effectiveStatus(tenant) {
   if (!tenant) return 'locked';
   if (tenant.is_operator) return 'active';
+  if (tenant.is_comped) return 'active';
   if (tenant.status === 'trial' && tenant.trial_ends_at && new Date(tenant.trial_ends_at) < new Date()) {
     return 'locked';
   }
@@ -131,5 +148,5 @@ module.exports = {
   createTenant, getTenantById, getTenantBySlug, getTenantByEmail,
   getTenantByStripeCustomerId, getTenantBySubscriptionId,
   countTenants, countNonOperatorTenants, listTenants, updateTenant,
-  effectiveStatus, isLocked, publicTenant,
+  setTenantComp, effectiveStatus, isLocked, publicTenant,
 };

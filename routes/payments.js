@@ -145,8 +145,15 @@ async function webhookHandler(req, res) {
       if (!tenant) {
         console.error('[billing] subscription event for unknown tenant. Subscription:', sub.id);
       } else if (event.type === 'customer.subscription.deleted') {
-        await updateTenant(tenant.id, { status: 'locked', subscription_status: 'canceled' });
-        console.log(`[billing] tenant ${tenant.id} subscription canceled — account locked.`);
+        if (tenant.is_comped) {
+          // Lifetime comp overlays billing — record the cancellation but
+          // never lock a comped tenant over a subscription event.
+          await updateTenant(tenant.id, { subscription_status: 'canceled' });
+          console.log(`[billing] tenant ${tenant.id} subscription canceled — lifetime comp, account stays active.`);
+        } else {
+          await updateTenant(tenant.id, { status: 'locked', subscription_status: 'canceled' });
+          console.log(`[billing] tenant ${tenant.id} subscription canceled — account locked.`);
+        }
       } else {
         await billing.applySubscriptionState(tenant, sub);
         console.log(`[billing] tenant ${tenant.id} subscription ${sub.id} -> ${sub.status}.`);
@@ -158,8 +165,15 @@ async function webhookHandler(req, res) {
       const invoice = event.data.object;
       const tenant = invoice.customer ? await getTenantByStripeCustomerId(invoice.customer) : null;
       if (tenant) {
-        await updateTenant(tenant.id, { status: 'past_due', subscription_status: 'past_due' });
-        console.log(`[billing] tenant ${tenant.id} payment failed — marked past_due.`);
+        if (tenant.is_comped) {
+          // Lifetime comp overlays billing — note the subscription state
+          // but never mark a comped tenant past_due.
+          await updateTenant(tenant.id, { subscription_status: 'past_due' });
+          console.log(`[billing] tenant ${tenant.id} payment failed — lifetime comp, status unchanged.`);
+        } else {
+          await updateTenant(tenant.id, { status: 'past_due', subscription_status: 'past_due' });
+          console.log(`[billing] tenant ${tenant.id} payment failed — marked past_due.`);
+        }
       }
       return res.json({ received: true });
     }

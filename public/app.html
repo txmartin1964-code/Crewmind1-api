@@ -203,11 +203,15 @@ async function loadConsole() {
   $('quoteUrl').innerHTML = 'Your quote page: <a href="/q/' + esc(t.slug) + '">/q/' + esc(t.slug) + '</a>';
   const status = t.effective_status;
   const pill = $('statusPill');
-  pill.textContent = status + (t.founding_cohort ? ' · founding #' + t.cohort_number : '');
+  pill.textContent = status + (t.founding_cohort ? ' · founding #' + t.cohort_number : '') + (t.is_comped ? ' · lifetime comp' : '');
   pill.className = 'pill ' + status;
 
   const billing = await api('/api/tenant/billing/status');
   const banner = $('trialBanner');
+  if (t.is_comped) {
+    banner.style.display = 'block';
+    banner.innerHTML = '<strong>Lifetime comp — thank you!</strong> Your CrewMind account is free forever, courtesy of the CrewMind team. No subscription needed.';
+  }
   if (status === 'trial') {
     const days = Math.max(0, Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 86400000));
     banner.style.display = 'block';
@@ -239,6 +243,7 @@ async function loadConsole() {
 
   $('billingSummary').textContent =
     'Plan: Core (' + (t.plan || 'core') + ')' +
+    (t.is_comped ? ' — lifetime comp, free forever. Thank you!' : '') +
     (billing.prices.founding_price_applies ? ' — founding-cohort $119 rate applies to your account.' : '') +
     (t.subscription_status ? ' · Subscription: ' + t.subscription_status : '') +
     (t.current_period_end ? ' · Current period ends ' + new Date(t.current_period_end).toLocaleDateString() : '');
@@ -384,6 +389,7 @@ async function saveRule(id) {
 async function upgrade(interval) {
   try {
     const data = await api('/api/tenant/billing/checkout', { method: 'POST', body: JSON.stringify({ interval }) });
+    if (data.comped) { alert(data.message || 'This account is on a lifetime comp — no payment needed.'); return; }
     location.href = data.url;
   } catch (ex) {
     alert(ex.message);

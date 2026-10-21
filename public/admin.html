@@ -22,6 +22,7 @@
     th { background: #0f172a; color: #94a3b8; white-space: nowrap; }
     .badge { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; background: #0369a1; white-space: nowrap; }
     .badge.green { background: #166534; } .badge.amber { background: #92400e; } .badge.red { background: #991b1b; } .badge.gray { background: #475569; }
+    .badge.gold { background: #a16207; color: #fef9c3; }
     .statgrid { display: flex; gap: 14px; flex-wrap: wrap; }
     .stat { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 14px 20px; min-width: 110px; }
     .stat .num { font-size: 26px; font-weight: bold; color: #38bdf8; }
@@ -50,6 +51,24 @@
       <h3>Pipeline — last 30 days</h3>
       <div class="statgrid" id="statGrid"><span class="small">Loading…</span></div>
       <p class="msg" id="statsMsg"></p>
+    </div>
+
+    <!-- Tenants -->
+    <div class="card">
+      <div class="row" style="justify-content: space-between;">
+        <h3 style="margin:0;">Tenants</h3>
+        <button onclick="loadTenants()">Refresh</button>
+      </div>
+      <p class="small">Every CrewMind account. <strong>Grant lifetime</strong> gives a free-forever comp: the account is active immediately and stays active regardless of trial or billing. The comp is an overlay — revoking it restores the account's real trial/subscription state, and usage caps still apply while comped.</p>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Business</th><th>Email</th><th>Status (effective)</th><th>Stored status</th><th>Cohort</th><th>Comp</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="tenantsBody"><tr><td colspan="8" class="small">Loading…</td></tr></tbody>
+      </table>
+      </div>
+      <p class="msg" id="tenantsMsg"></p>
     </div>
 
     <!-- Leads -->
@@ -571,8 +590,52 @@
       } catch (e) { setMsg('campaignMsg', e.message, 'err'); }
     }
 
+    function tenantStatusBadge(t) {
+      const map = { active: 'green', trial: 'amber', past_due: 'amber', locked: 'red', canceled: 'red' };
+      return `<span class="badge ${map[t.effective_status] || 'gray'}">${esc(t.effective_status || 'unknown')}</span>`;
+    }
+
+    async function loadTenants() {
+      try {
+        const { tenants } = await api('/api/admin/tenants');
+        const body = document.getElementById('tenantsBody');
+        if (!tenants.length) { body.innerHTML = '<tr><td colspan="8" class="small">No tenants yet.</td></tr>'; return; }
+        body.innerHTML = tenants.map(t => `<tr>
+          <td>${t.id}</td>
+          <td><strong>${esc(t.business_name || '')}</strong>${t.is_operator ? '<br><span class="badge gray">operator</span>' : ''}</td>
+          <td>${esc(t.email || '')}</td>
+          <td>${tenantStatusBadge(t)}${t.is_comped ? '<br><span class="badge gold">LIFETIME COMP</span>' : ''}</td>
+          <td>${esc(t.status || '')}</td>
+          <td>${t.founding_cohort ? 'founding #' + esc(t.cohort_number ?? '') : '<span class="small">—</span>'}</td>
+          <td>${t.is_comped ? `<span class="ok">since ${new Date(t.comped_at).toLocaleDateString('en-US')}</span>` : '<span class="small">—</span>'}</td>
+          <td>${t.is_operator ? '<span class="small">—</span>' : (t.is_comped
+            ? `<button class="secondary" onclick="revokeComp(${t.id})">Revoke comp</button>`
+            : `<button onclick="grantComp(${t.id})">Grant lifetime</button>`)}</td>
+        </tr>`).join('');
+        setMsg('tenantsMsg', '');
+      } catch (e) { setMsg('tenantsMsg', e.message, 'err'); }
+    }
+
+    async function grantComp(id) {
+      if (!confirm('Grant this account a LIFETIME COMP? It becomes free forever (usage caps still apply) until you revoke it.')) return;
+      try {
+        await api('/api/admin/tenants/' + id + '/comp', { method: 'POST', body: '{}' });
+        setMsg('tenantsMsg', 'Lifetime comp granted.', 'ok');
+        loadTenants();
+      } catch (e) { setMsg('tenantsMsg', e.message, 'err'); }
+    }
+
+    async function revokeComp(id) {
+      if (!confirm('Revoke this lifetime comp? The account returns to its real trial/subscription state (an expired trial locks again).')) return;
+      try {
+        await api('/api/admin/tenants/' + id + '/uncomp', { method: 'POST', body: '{}' });
+        setMsg('tenantsMsg', 'Comp revoked.', 'ok');
+        loadTenants();
+      } catch (e) { setMsg('tenantsMsg', e.message, 'err'); }
+    }
+
     // Init
-    loadStats(); loadLeads(); loadAppointments(); loadPricing(); loadSettings(); loadContracts(); loadProspects(); loadCampaigns();
+    loadStats(); loadTenants(); loadLeads(); loadAppointments(); loadPricing(); loadSettings(); loadContracts(); loadProspects(); loadCampaigns();
   </script>
 </body>
 </html>

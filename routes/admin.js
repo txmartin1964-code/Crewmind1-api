@@ -18,6 +18,7 @@ const { getLeads, countLeads } = require('../db/leads');
 const { getPricingRules, updatePricingRule } = require('../db/quotes');
 const { getUpcomingAppointments, ensureUpcomingSlots } = require('../db/appointments');
 const { getAllSettings, setSetting } = require('../db/settings');
+const { listTenants, getTenantById, setTenantComp, effectiveStatus } = require('../db/tenants');
 
 // Settings the admin console may read/write. Values are stored as text in
 // app_settings; deposit_percent is exposed as a number.
@@ -177,6 +178,75 @@ router.post('/slots/generate', async (req, res) => {
     res.json({ success: true, ...result });
   } catch (err) {
     console.error('[admin] slot generation error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/** Shape one tenant for the operator console (never the password hash). */
+function adminTenantView(t) {
+  return {
+    id: t.id,
+    business_name: t.business_name,
+    email: t.email,
+    status: t.status,
+    effective_status: effectiveStatus(t),
+    is_comped: !!t.is_comped,
+    comped_at: t.comped_at || null,
+    founding_cohort: !!t.founding_cohort,
+    cohort_number: t.cohort_number,
+    plan: t.plan,
+    is_operator: !!t.is_operator,
+    created_at: t.created_at,
+  };
+}
+
+/**
+ * GET /api/admin/tenants
+ * All tenant accounts with stored + effective status and comp state.
+ */
+router.get('/tenants', async (req, res) => {
+  try {
+    const tenants = await listTenants({});
+    res.json({ tenants: tenants.map(adminTenantView) });
+  } catch (err) {
+    console.error('[admin] tenants list error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/admin/tenants/:id/comp
+ * Grant a lifetime comp. Overlay only — the stored status is untouched,
+ * so the tenant is active immediately (even mid- or post-trial) and a
+ * later uncomp restores their real trial/subscription state.
+ */
+router.post('/tenants/:id/comp', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const tenant = Number.isNaN(id) ? null : await getTenantById(id);
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found.' });
+    const updated = await setTenantComp(tenant.id, true);
+    res.json({ tenant: adminTenantView(updated) });
+  } catch (err) {
+    console.error('[admin] comp grant error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/admin/tenants/:id/uncomp
+ * Revoke a lifetime comp. The tenant returns to whatever their stored
+ * status / trial clock / subscription says — nothing was ever rewritten.
+ */
+router.post('/tenants/:id/uncomp', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const tenant = Number.isNaN(id) ? null : await getTenantById(id);
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found.' });
+    const updated = await setTenantComp(tenant.id, false);
+    res.json({ tenant: adminTenantView(updated) });
+  } catch (err) {
+    console.error('[admin] comp revoke error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

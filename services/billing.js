@@ -111,7 +111,11 @@ async function applySubscriptionState(tenant, sub) {
     fields.current_period_end = new Date(sub.current_period_end * 1000).toISOString();
   }
   const mapped = mapSubscriptionStatus(sub.status);
-  if (mapped) fields.status = mapped;
+  // Lifetime comp (migration 012): Stripe bookkeeping (ids, subscription
+  // status, period end) is still recorded, but a subscription event must
+  // never move a comped tenant's status — the comp overlays billing, so
+  // a stray past_due/canceled event cannot lock them.
+  if (mapped && !tenant.is_comped) fields.status = mapped;
   await updateTenant(tenant.id, fields);
 }
 
