@@ -4,6 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Appointment Confirmed — CrewMind</title>
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1A1D20">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CrewMind">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
   <style>
@@ -17,6 +26,7 @@
     body{font-family:'DM Sans',-apple-system,sans-serif;background:var(--coal);color:var(--body);line-height:1.65;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem}
     .logo{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1.2rem;color:var(--heading);letter-spacing:-0.02em;text-decoration:none;margin-bottom:3rem;display:block;text-align:center}
     .logo span{color:var(--accent)}
+    .logo img{width:30px;height:30px;vertical-align:-6px;margin-right:.5rem}
     .card{background:var(--slate);border:1px solid var(--border);border-radius:20px;padding:3rem 2.5rem;max-width:500px;width:100%;text-align:center}
     .check-circle{width:72px;height:72px;background:var(--green-dim);border:2px solid var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto 1.5rem}
     h1{font-family:'Space Grotesk',sans-serif;font-size:1.8rem;font-weight:700;color:var(--heading);letter-spacing:-0.025em;margin-bottom:.5rem}
@@ -39,7 +49,7 @@
 </head>
 <body>
 
-<a href="/" class="logo">Crew<span>Mind</span></a>
+<a href="/" class="logo"><img src="/assets/cm-mark.png" alt="CrewMind logo">Crew<span>Mind</span></a>
 
 <div class="card">
   <div id="loadingState" class="loading">Loading your appointment...</div>
@@ -125,6 +135,13 @@ async function loadAppointment(code) {
     document.getElementById('errorState').style.display = 'block';
   }
 }
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js').catch(function () { /* PWA is progressive enhancement — page works without it */ });
+    });
+  }
 </script>
 </body>
 </html>

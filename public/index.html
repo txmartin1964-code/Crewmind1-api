@@ -4,6 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CrewMind — Built by a Contractor, for Contractors</title>
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="64x64" href="/assets/favicon-64.png">
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1A1D20">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CrewMind">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
     <style>
@@ -46,7 +56,9 @@
             font-weight: 700; font-size: 1.35rem;
             color: var(--heading);
             letter-spacing: -0.02em;
+            display: flex; align-items: center; gap: 0.6rem;
         }
+        .logo img { width: 34px; height: 34px; }
         .logo span { color: var(--accent); }
         .nav-tag {
             font-size: 0.72rem;
@@ -309,7 +321,7 @@
 <body>
 
 <nav>
-    <div class="logo">Crew<span>Mind</span></div>
+    <div class="logo"><img src="/assets/cm-mark.png" alt="CrewMind logo">Crew<span>Mind</span></div>
     <div style="display:flex;align-items:center;gap:1rem">
         <div class="nav-tag">AI Operations</div>
         <a href="/signup" style="color:var(--accent);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:0.82rem;padding:0.45rem 0.6rem;text-decoration:none;white-space:nowrap">For Contractors: Free Trial</a>
@@ -445,5 +457,12 @@
     &copy; 2026 CrewMind
 </footer>
 
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js').catch(function () { /* PWA is progressive enhancement — page works without it */ });
+    });
+  }
+</script>
 </body>
 </html>

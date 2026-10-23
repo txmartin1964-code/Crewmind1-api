@@ -16,6 +16,10 @@ const fs = require('fs');
 const { runCrewMindScraper } = require('./scraperService.js');
 const { saveScrapedLeads } = require('./db/scraped-leads');
 
+// Brand icons ship as base64 text (public/assets-b64/) and are decoded into
+// public/assets/ at boot — see lib/restore-assets.js.
+require('./lib/restore-assets').ensureBrandAssets(__dirname);
+
 const app = express();
 const port = process.env.PORT || 3000;
 
