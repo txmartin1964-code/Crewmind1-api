@@ -4,22 +4,30 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
 
 /**
- * scraperService.js (v2)
+ * scraperService.js (v3)
  *
  * Scrapes Google Maps for a query and returns enriched leads:
  *   [{ name, phone, website, email }]
  *
- * v1 read the results FEED cards only. Feed items don't reliably carry a
- * phone (the old span.UsC13e selector kept missing) and never carry an
- * email, so production prospects landed with a name and nothing else —
- * and the GTM campaign sender only targets prospects WITH emails.
+ * v1 read the results FEED cards only (no reliable phone, never an
+ * email). v2 clicked each feed card to open its detail panel — better
+ * extraction, but the click flow was fragile: in production it returned
+ * a single junk lead literally named "Results" (the feed's own header,
+ * captured as if it were a business) and healed nothing.
  *
- * v2 opens each result's DETAIL PANEL (where Maps actually puts the
- * phone button and website link), then enriches each lead that has a
- * website by fetching the site (homepage, then /contact, then
- * /contact-us) and extracting the best contact email. Enrichment
- * failures are per-lead and never kill the scrape. The browser is
- * always closed, including when the crawl throws.
+ * v3 never clicks feed cards and never trusts feed chrome:
+ *   1. Scroll the feed and collect candidate businesses from ANCHOR
+ *      HREFS — only "/maps/place/" links count (filterPlaceLinks).
+ *   2. Navigate DIRECTLY to each place URL and read the detail page:
+ *      name from the page <h1>, phone from the phone:tel: element,
+ *      website from the authority link. A lead's name must pass
+ *      isValidBusinessName — generic UI strings ("Results", …) can
+ *      never become a lead.
+ *   3. Enrich each lead that has a website by fetching the site
+ *      (homepage, then /contact, then /contact-us) and extracting the
+ *      best contact email. Enrichment failures are per-lead and never
+ *      kill the scrape. The browser is always closed, including when
+ *      the crawl throws.
  */
 
 // ---------------------------------------------------------------------------
@@ -161,12 +169,98 @@ async function findEmailOnSite(website) {
 }
 
 // ---------------------------------------------------------------------------
+// Place candidates — pure helpers (unit-tested in tests/)
+// ---------------------------------------------------------------------------
+
+// Google Maps UI chrome that lives in and around the results feed and can
+// look like a "card" to a naive scraper. v2 saved the feed's own header
+// as a lead literally named "Results". A business name is never one of
+// these strings.
+const GENERIC_UI_NAMES = new Set([
+  'results',
+  'search results',
+  'directions',
+  'saved',
+  'recents',
+  'get help',
+  'help',
+  'sign in',
+  'settings',
+  'menu',
+  'back',
+  'back to results',
+  'overview',
+  'about',
+  'reviews',
+  'photos',
+  'hours',
+  'location',
+  'share',
+  'website',
+  'call',
+  'send to phone',
+  'send to your phone',
+  'your places',
+  'lists',
+  'contribute',
+  'updates',
+  'notifications',
+  'google maps',
+  'search google maps',
+  'search this area',
+  'see all',
+  'show more',
+  'more results',
+]);
+
+/**
+ * True when `name` can plausibly be a business: a string that is longer
+ * than one character once trimmed and is not Google Maps UI chrome.
+ * Every lead name passes through here — from a place page's <h1> or from
+ * a result card — so feed chrome can never become a lead.
+ */
+function isValidBusinessName(name) {
+  if (typeof name !== 'string') return false;
+  const trimmed = name.trim();
+  if (trimmed.length <= 1) return false;
+  if (GENERIC_UI_NAMES.has(trimmed.toLowerCase())) return false;
+  return true;
+}
+
+/** Stable dedupe key for a place URL (the path identifies the place). */
+function placeUrlKey(href) {
+  return String(href).split('?')[0].replace(/\/+$/, '');
+}
+
+/**
+ * From a list of anchor hrefs, keep only Google Maps PLACE links (href
+ * contains "/maps/place/"), deduped by place, first occurrence wins.
+ * Search/dir/home links and non-strings are dropped — feed chrome never
+ * becomes a candidate business.
+ */
+function filterPlaceLinks(hrefs) {
+  const seen = new Set();
+  const out = [];
+  for (const href of hrefs || []) {
+    if (typeof href !== 'string') continue;
+    if (!href.includes('/maps/place/')) continue;
+    const key = placeUrlKey(href);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(href);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Google Maps scraping
 // ---------------------------------------------------------------------------
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Runs inside the page: pull name/phone/website out of the open detail panel. */
+const BLOCKED_RE = /unusual traffic|not a robot|verify it'?s you|our systems have detected/i;
+
+/** Runs inside the page: pull name/phone/website out of a place page. */
 function extractDetailPanel() {
   const panel = document.querySelector('div[role="main"]') || document;
 
@@ -250,104 +344,104 @@ async function runCrewMindScraper(query, maxResults = 25) {
       // search that landed straight on a place page. Distinguish them: a
       // place page has a panel with an <h1>; a block page explains itself.
       const pageText = await page.evaluate(() => document.body?.innerText || '').catch(() => '');
-      if (/unusual traffic|not a robot|verify it'?s you|our systems have detected/i.test(pageText)) {
+      if (BLOCKED_RE.test(pageText)) {
         throw new Error('Google Maps blocked the request (CAPTCHA / unusual-traffic interstitial).');
       }
-      const single = await page.evaluate(extractDetailPanel).catch(() => null);
-      if (single?.name) {
-        leads.push({ name: single.name, phone: single.phone || '', website: single.website || '', email: null });
+      if (page.url().includes('/maps/place/')) {
+        const single = await page.evaluate(extractDetailPanel).catch(() => null);
+        if (single && isValidBusinessName(single.name)) {
+          leads.push({ name: single.name, phone: single.phone || '', website: single.website || '', email: null });
+        }
       }
       return finishWithEnrichment(leads);
     }
 
-    // Scroll the feed until at least maxResults businesses are loaded
-    // (or the feed stops growing).
-    await page.evaluate(async (limit) => {
-      const feed = document.querySelector('div[role="feed"]');
-      if (!feed) return;
-      const loaded = () =>
-        new Set([...feed.querySelectorAll('a[href*="/maps/place/"]')].map((a) => a.href)).size;
-      let last = 0;
-      let stableRounds = 0;
-      while (loaded() < limit && stableRounds < 4) {
-        feed.scrollTo(0, feed.scrollHeight);
-        await new Promise((r) => setTimeout(r, 900));
-        const now = loaded();
-        stableRounds = now === last ? stableRounds + 1 : 0;
-        last = now;
-      }
-    }, maxResults);
+    // Scroll the feed until the number of unique PLACE links stops growing
+    // (or maxResults is reached). Candidates come from anchor hrefs only —
+    // only "/maps/place/" links count, so the feed header ("Results") and
+    // other chrome never enter the candidate list.
+    let placeHrefs = [];
+    let lastCount = -1;
+    let stableRounds = 0;
+    while (stableRounds < 3) {
+      const hrefs = await page
+        .evaluate(() => {
+          const feed = document.querySelector('div[role="feed"]');
+          if (feed) feed.scrollTo(0, feed.scrollHeight);
+          return [...feed.querySelectorAll('a[href]')].map((a) => a.href);
+        })
+        .catch(() => []);
+      placeHrefs = filterPlaceLinks(hrefs);
+      if (placeHrefs.length >= maxResults) break;
+      stableRounds = placeHrefs.length === lastCount ? stableRounds + 1 : 0;
+      lastCount = placeHrefs.length;
+      await sleep(900);
+    }
+    const targets = placeHrefs.slice(0, maxResults);
 
-    // Snapshot the result cards (name + place link) in feed order.
-    const cards = await page.evaluate(() => {
-      const links = [...document.querySelectorAll('div[role="feed"] a[href*="/maps/place/"]')];
-      const byHref = new Map();
-      for (const a of links) {
-        if (byHref.has(a.href)) continue;
-        let name = '';
-        let node = a;
-        for (let up = 0; up < 6 && node && !name; up++) {
-          node = node.parentElement;
-          const el = node?.querySelector?.('div.fontHeadlineSmall');
-          if (el) name = el.innerText.trim();
+    // Fallback names from the result cards themselves (each place anchor's
+    // aria-label, or the card's headline element) — never container chrome.
+    // Used only when a place page's <h1> won't read; still validator-gated.
+    const cardNames = await page
+      .evaluate(() => {
+        const out = {};
+        for (const a of document.querySelectorAll('div[role="feed"] a[href*="/maps/place/"]')) {
+          let name = (a.getAttribute('aria-label') || '').trim();
+          let node = a;
+          for (let up = 0; up < 6 && node && !name; up++) {
+            node = node.parentElement;
+            const el = node?.querySelector?.('div.fontHeadlineSmall');
+            if (el) name = el.innerText.trim();
+          }
+          if (name && !(a.href in out)) out[a.href] = name;
         }
-        byHref.set(a.href, { name, href: a.href });
-      }
-      return [...byHref.values()];
-    });
+        return out;
+      })
+      .catch(() => ({}));
+    const cardNameByKey = new Map();
+    for (const [href, name] of Object.entries(cardNames)) {
+      const key = placeUrlKey(href);
+      if (!cardNameByKey.has(key)) cardNameByKey.set(key, name);
+    }
 
-    const targets = cards.slice(0, maxResults);
-
-    for (let i = 0; i < targets.length; i++) {
-      const fallbackName = targets[i].name || '';
+    // Visit each place page DIRECTLY. No feed-card clicking: the v2 click
+    // flow opened the wrong thing often enough to poison production data.
+    const seenNames = new Set();
+    for (const placeUrl of targets) {
       try {
-        const clicked = await page.evaluate((idx) => {
-          const links = [...document.querySelectorAll('div[role="feed"] a[href*="/maps/place/"]')];
-          const uniq = [...new Map(links.map((a) => [a.href, a])).values()];
-          if (!uniq[idx]) return false;
-          uniq[idx].click();
-          return true;
-        }, i);
-        if (!clicked) continue;
+        await page.goto(placeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+        // A bounced navigation lands back on a search/list page — skip it.
+        if (!page.url().includes('/maps/place/')) continue;
 
         await page
-          .waitForSelector('div[role="main"] h1, h1.DUwDvf', { timeout: 6000 })
+          .waitForSelector('div[role="main"] h1, h1.DUwDvf, h1', { timeout: 8000 })
           .catch(() => {});
-        await sleep(700); // panel action buttons (phone/website) hydrate late
+        await sleep(600); // phone/website buttons hydrate late
 
         const data = await page.evaluate(extractDetailPanel).catch(() => null);
-        const name = data?.name || fallbackName;
-        if (name) {
-          leads.push({
-            name,
-            phone: data?.phone || '',
-            website: data?.website || '',
-            email: null,
-          });
+        let name = (data?.name || '').trim();
+        if (!isValidBusinessName(name)) {
+          const fallback = (cardNameByKey.get(placeUrlKey(placeUrl)) || '').trim();
+          if (isValidBusinessName(fallback)) name = fallback;
         }
-      } catch {
-        // One bad panel must not sink the run — keep the business by name.
-        if (fallbackName) leads.push({ name: fallbackName, phone: '', website: '', email: null });
-      }
+        if (!isValidBusinessName(name)) continue; // no trustworthy name → not a lead
 
-      // Back to the results feed for the next card.
-      if (i < targets.length - 1) {
-        const wentBack = await page
-          .evaluate(() => {
-            const back = document.querySelector(
-              'button[aria-label="Back"], button[aria-label*="Back to results"]'
-            );
-            if (back) {
-              back.click();
-              return true;
-            }
-            return false;
-          })
-          .catch(() => false);
-        if (!wentBack) await page.goBack({ waitUntil: 'domcontentloaded' }).catch(() => {});
-        await page.waitForSelector(feedSelector, { timeout: 8000 }).catch(() => {});
-        await sleep(500);
+        const nameKey = name.toLowerCase();
+        if (seenNames.has(nameKey)) continue;
+        seenNames.add(nameKey);
+
+        leads.push({
+          name,
+          phone: data?.phone || '',
+          website: data?.website || '',
+          email: null,
+        });
+      } catch {
+        // One unreachable or broken place page must not sink the run.
+        continue;
       }
+      await sleep(400); // be polite to Maps between place pages
     }
   } finally {
     if (browser) {
@@ -383,9 +477,11 @@ async function finishWithEnrichment(leads) {
 
 module.exports = {
   runCrewMindScraper,
-  // Exported for unit tests (tests/scraper-email.test.js).
+  // Exported for unit tests (tests/).
   extractEmails,
   pickBestEmail,
   extractBestEmail,
   findEmailOnSite,
+  isValidBusinessName,
+  filterPlaceLinks,
 };
