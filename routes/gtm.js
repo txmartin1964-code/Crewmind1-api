@@ -4,6 +4,7 @@
  *   adminRouter  (mounted at /api/admin, ADMIN_TOKEN):
  *     GET   /prospects                 pipeline list + counts
  *     PATCH /prospects/:id             move a prospect in the pipeline
+ *     DELETE /prospects/:id            permanently remove a prospect
  *     GET   /campaigns                 campaigns with send tallies
  *     POST  /campaigns                 create a campaign (draft)
  *     POST  /campaigns/:id/send        send/resume (CAN-SPAM enforced)
@@ -51,6 +52,19 @@ adminRouter.patch('/prospects/:id', async (req, res) => {
     res.json({ prospect });
   } catch (err) {
     console.error('[gtm] prospect update error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+adminRouter.delete('/prospects/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) return res.status(400).json({ error: 'A numeric prospect id is required.' });
+    const deleted = await gtm.deleteProspect(id, 1);
+    if (!deleted) return res.status(404).json({ error: 'Prospect not found.' });
+    res.json({ ok: true, deleted: { id: deleted.id, name: deleted.name } });
+  } catch (err) {
+    console.error('[gtm] prospect delete error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

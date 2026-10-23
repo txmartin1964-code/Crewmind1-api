@@ -75,9 +75,15 @@ async function saveScrapedLeads(leads, { query, source, tenantId = 1 } = {}) {
   return { saved, duplicates };
 }
 
+/** Single-lead convenience wrapper — background scrape jobs (v4) save
+ *  incrementally, one lead at a time, as the crawl produces them. */
+async function saveScrapedLead(lead, opts) {
+  return saveScrapedLeads([lead], opts);
+}
+
 async function getScrapedLeadById(id) {
   const result = await pool.query('SELECT * FROM scraped_leads WHERE id=$1', [id]);
   return result.rows[0] || null;
 }
 
-module.exports = { saveScrapedLeads, getScrapedLeadById };
+module.exports = { saveScrapedLeads, saveScrapedLead, getScrapedLeadById };

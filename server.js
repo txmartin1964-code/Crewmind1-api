@@ -14,7 +14,11 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { runCrewMindScraper } = require('./scraperService.js');
-const { saveScrapedLeads } = require('./db/scraped-leads');
+const { saveScrapedLead, saveScrapedLeads } = require('./db/scraped-leads');
+const {
+  createJobRegistry, startJob, noteLeadSaved, noteLeadSaveFailed,
+  finishJob, failJob, listJobs, snapshotJob,
+} = require('./lib/scrape-jobs');
 
 // Brand icons ship as base64 text (public/assets-b64/) and are decoded into
 // public/assets/ at boot — see lib/restore-assets.js.
@@ -91,34 +95,120 @@ app.get('/', (req, res) => {
   }
 });
 
-// -- SCRAPER ENDPOINTS
+// -- SCRAPER ENDPOINTS (v4: background jobs + incremental save)
 // Both scraper endpoints require the admin token: they burn real server
 // resources (headless Chrome) and harvest contact data, so they are not
 // public. Fails closed (503) when ADMIN_TOKEN is unset, like the admin API.
-app.post('/api/admin/scrape-buyers', requireAdmin, async (req, res) => {
-  const { category, city } = req.body;
-  try {
-    const query = `${category} in ${city}`;
-    const buyerleads = await runCrewMindScraper(query, 50);
-    const { saved, duplicates } = await saveScrapedLeads(buyerleads, { query, source: 'admin_buyers', tenantId: 1 });
-    console.log(`[scraper] buyers "${query}": ${buyerleads.length} found, ${saved} saved, ${duplicates} duplicate(s) skipped.`);
-    res.json({ success: true, count: buyerleads.length, saved, duplicates, leads: buyerleads, buyerleads });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+//
+// Why jobs: the v3 crawl (visit each place page + website enrichment)
+// runs far longer than an HTTP request window — Render's proxy cut the
+// synchronous request off (~502) and, because saving happened only
+// after the whole crawl returned, the entire run was lost. Now the
+// POST only STARTS a job and returns immediately; the crawl runs
+// in-process and each lead is saved the moment it is processed via
+// the scraper's onLead callback. Progress is at GET scrape-status.
+const scrapeJobRegistry = createJobRegistry();
+const BUYER_SCRAPE_MAX = 25; // per run — repeatable runs, heal-on-rescrape fills gaps
+const CLIENT_SCRAPE_MAX = 20;
+
+/**
+ * Start a background scrape job. Returns false (+ the running job)
+ * when a job of this kind is already running. The crawl promise is
+ * deliberately NOT tied to any request: it runs to completion (or
+ * failure) in-process, updating the job record as leads land.
+ */
+function launchScrapeJob(kind, query, source, maxResults) {
+  const { started, job } = startJob(scrapeJobRegistry, { kind, query });
+  if (!started) return { started: false, job };
+
+  (async () => {
+    // Leads whose incremental save failed get ONE bulk retry at the
+    // end — they were never counted as saved, so this cannot
+    // double-save leads the callback already persisted.
+    const failedLeads = [];
+    try {
+      const leads = await runCrewMindScraper(query, maxResults, {
+        onLead: async (lead) => {
+          try {
+            const result = await saveScrapedLead(lead, { query, source, tenantId: 1 });
+            noteLeadSaved(job, result);
+          } catch (err) {
+            console.error(`[scraper] incremental save failed for "${lead.name}": ${err.message}`);
+            noteLeadSaveFailed(job, err);
+            failedLeads.push(lead);
+          }
+        },
+      });
+
+      if (failedLeads.length) {
+        try {
+          const retry = await saveScrapedLeads(failedLeads, { query, source, tenantId: 1 });
+          job.foundCount += failedLeads.length;
+          job.savedCount += (retry.saved || 0) + (retry.duplicates || 0);
+          job.newCount += retry.saved || 0;
+          job.duplicateCount += retry.duplicates || 0;
+        } catch (err) {
+          console.error(`[scraper] end-of-run save retry failed for "${query}": ${err.message}`);
+        }
+      }
+
+      finishJob(scrapeJobRegistry, job,
+        `Done — ${leads.length} result(s) found, ${job.savedCount} saved to the pipeline ` +
+        `(${job.newCount} new, ${job.duplicateCount} duplicate/healed). Cap is ${maxResults} per run — run again for more.`);
+      console.log(`[scraper] ${kind} job ${job.id} "${query}": ${leads.length} found, ${job.savedCount} saved (${job.newCount} new, ${job.duplicateCount} dup/healed).`);
+    } catch (err) {
+      failJob(scrapeJobRegistry, job, err);
+      console.error(`[scraper] ${kind} job ${job.id} "${query}" failed: ${err.message} (${job.savedCount} lead(s) saved before the failure are in the pipeline).`);
+    }
+  })().catch((err) => console.error(`[scraper] job runner crashed: ${err.message}`));
+
+  return { started: true, job };
+}
+
+function startScrapeResponse(res, kind, query, source, maxResults) {
+  const { started, job } = launchScrapeJob(kind, query, source, maxResults);
+  if (!started) {
+    return res.status(409).json({
+      success: false,
+      started: false,
+      error: `A ${kind} scrape is already running (job ${job.id}, started ${job.startedAt}). Wait for it to finish — progress is on the scrape-status endpoint.`,
+      job: snapshotJob(job),
+    });
   }
+  return res.json({
+    success: true,
+    started: true,
+    jobId: job.id,
+    job: snapshotJob(job),
+    message: `Scrape running in the background (cap ${maxResults} per run) — results land in the pipeline as they're found; refresh in a few minutes.`,
+  });
+}
+
+app.post('/api/admin/scrape-buyers', requireAdmin, (req, res) => {
+  const { category, city } = req.body || {};
+  if (!category || !city) {
+    return res.status(400).json({ success: false, error: 'category and city are required.' });
+  }
+  const query = `${category} in ${city}`;
+  return startScrapeResponse(res, 'buyers', query, 'admin_buyers', BUYER_SCRAPE_MAX);
 });
 
-app.post('/api/client/scrape-leads', requireAdmin, async (req, res) => {
-  const { targetService, targetArea } = req.body;
-  try {
-    const query = `${targetService} quotes near ${targetArea}`;
-    const clientleads = await runCrewMindScraper(query, 20);
-    const { saved, duplicates } = await saveScrapedLeads(clientleads, { query, source: 'client_leads', tenantId: 1 });
-    console.log(`[scraper] clients "${query}": ${clientleads.length} found, ${saved} saved, ${duplicates} duplicate(s) skipped.`);
-    res.json({ success: true, count: clientleads.length, saved, duplicates, leads: clientleads, clientleads });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+function handleClientScrape(req, res) {
+  const { targetService, targetArea } = req.body || {};
+  if (!targetService || !targetArea) {
+    return res.status(400).json({ success: false, error: 'targetService and targetArea are required.' });
   }
+  const query = `${targetService} quotes near ${targetArea}`;
+  return startScrapeResponse(res, 'clients', query, 'client_leads', CLIENT_SCRAPE_MAX);
+}
+
+// Canonical v4 path + the pre-v4 path the console used (kept as an alias).
+app.post('/api/admin/scrape-clients', requireAdmin, handleClientScrape);
+app.post('/api/client/scrape-leads', requireAdmin, handleClientScrape);
+
+app.get('/api/admin/scrape-status', requireAdmin, (req, res) => {
+  const jobs = listJobs(scrapeJobRegistry);
+  res.json({ success: true, jobs, running: jobs.filter((j) => j.status === 'running') });
 });
 
 // -- STARTUP: RUN MIGRATIONS THEN LISTEN

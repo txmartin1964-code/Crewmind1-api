@@ -4,10 +4,19 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
 
 /**
- * scraperService.js (v3)
+ * scraperService.js (v4 — crawl logic is v3, delivery is new)
  *
  * Scrapes Google Maps for a query and returns enriched leads:
  *   [{ name, phone, website, email }]
+ *
+ * v4 adds an optional onLead callback (third argument, or
+ * { onLead } object): each lead is enriched and handed to the
+ * callback the moment it is fully processed, instead of only being
+ * returned in one batch at the end. Background scrape jobs use this
+ * to save leads incrementally — a long crawl outlives any HTTP
+ * request window, so batch-only delivery lost whole runs to proxy
+ * timeouts. With no callback, behavior is unchanged: the full
+ * enriched array is returned.
  *
  * v1 read the results FEED cards only (no reliable phone, never an
  * email). v2 clicked each feed card to open its detail panel — better
@@ -303,9 +312,50 @@ function extractDetailPanel() {
   return { name, phone, website };
 }
 
-async function runCrewMindScraper(query, maxResults = 25) {
+async function runCrewMindScraper(query, maxResults = 25, options = {}) {
+  const onLead = typeof options === 'function'
+    ? options
+    : (options && typeof options.onLead === 'function' ? options.onLead : null);
+
   let browser;
   const leads = [];
+  const seenLeadNames = new Set();
+
+  /**
+   * Enrich one lead, record it, and hand it to onLead immediately.
+   * Dedupe by business name happens here so a lead is emitted at
+   * most once. Callback failures are logged, never fatal — the lead
+   * stays in the returned array so the caller can still see it.
+   */
+  async function addLead(raw) {
+    const lead = {
+      name: raw.name,
+      phone: raw.phone || '',
+      website: raw.website || '',
+      email: null,
+    };
+    const key = lead.name.toLowerCase();
+    if (seenLeadNames.has(key)) return;
+    seenLeadNames.add(key);
+
+    if (lead.website) {
+      try {
+        lead.email = await findEmailOnSite(lead.website);
+      } catch {
+        lead.email = null;
+      }
+      await sleep(250); // be polite to the sites being enriched
+    }
+
+    leads.push(lead);
+    if (onLead) {
+      try {
+        await onLead(lead);
+      } catch (err) {
+        console.error(`[scraper] onLead callback failed for "${lead.name}": ${err.message}`);
+      }
+    }
+  }
 
   try {
     browser = await puppeteer.launch({
@@ -350,10 +400,10 @@ async function runCrewMindScraper(query, maxResults = 25) {
       if (page.url().includes('/maps/place/')) {
         const single = await page.evaluate(extractDetailPanel).catch(() => null);
         if (single && isValidBusinessName(single.name)) {
-          leads.push({ name: single.name, phone: single.phone || '', website: single.website || '', email: null });
+          await addLead(single);
         }
       }
-      return finishWithEnrichment(leads);
+      return leads;
     }
 
     // Scroll the feed until the number of unique PLACE links stops growing
@@ -406,7 +456,6 @@ async function runCrewMindScraper(query, maxResults = 25) {
 
     // Visit each place page DIRECTLY. No feed-card clicking: the v2 click
     // flow opened the wrong thing often enough to poison production data.
-    const seenNames = new Set();
     for (const placeUrl of targets) {
       try {
         await page.goto(placeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -427,15 +476,11 @@ async function runCrewMindScraper(query, maxResults = 25) {
         }
         if (!isValidBusinessName(name)) continue; // no trustworthy name → not a lead
 
-        const nameKey = name.toLowerCase();
-        if (seenNames.has(nameKey)) continue;
-        seenNames.add(nameKey);
-
-        leads.push({
+        // Enriched + emitted via onLead inside addLead (dedupe included).
+        await addLead({
           name,
           phone: data?.phone || '',
           website: data?.website || '',
-          email: null,
         });
       } catch {
         // One unreachable or broken place page must not sink the run.
@@ -449,30 +494,10 @@ async function runCrewMindScraper(query, maxResults = 25) {
     }
   }
 
-  return finishWithEnrichment(leads);
-}
-
-/** Dedupe by business, then attach website emails (per-lead, never fatal). */
-async function finishWithEnrichment(leads) {
-  const seen = new Set();
-  const unique = [];
-  for (const lead of leads) {
-    const key = lead.name.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(lead);
-  }
-
-  for (const lead of unique) {
-    if (!lead.website) continue;
-    try {
-      lead.email = await findEmailOnSite(lead.website);
-    } catch {
-      lead.email = null;
-    }
-    await sleep(250); // be polite to the sites being enriched
-  }
-  return unique;
+  // Leads were enriched (and emitted via onLead) one by one in addLead
+  // as the crawl went — there is no batch enrichment step anymore, so
+  // a caller using onLead has already received every lead in `leads`.
+  return leads;
 }
 
 module.exports = {

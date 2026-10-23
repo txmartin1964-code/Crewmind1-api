@@ -36,6 +36,17 @@ async function getProspectCounts(tenantId = 1) {
   return counts;
 }
 
+/** Permanently remove a prospect row (operator cleanup — e.g. the
+ *  junk "Results" rows the v2 scraper bug created). Returns the
+ *  deleted row, or null when no such prospect exists for the tenant. */
+async function deleteProspect(id, tenantId = 1) {
+  const result = await pool.query(
+    `DELETE FROM scraped_leads WHERE id=$1 AND tenant_id=$2 RETURNING *`,
+    [id, tenantId]
+  );
+  return result.rows[0] || null;
+}
+
 async function updateProspectStatus(id, status, tenantId = 1) {
   const result = await pool.query(
     `UPDATE scraped_leads SET pipeline_status=$1 WHERE id=$2 AND tenant_id=$3 RETURNING *`,
@@ -142,7 +153,7 @@ async function getAlreadySentLeadIds(campaignId) {
 
 module.exports = {
   PIPELINE_STATUSES,
-  getProspects, getProspectCounts, updateProspectStatus, markProspectContacted,
+  getProspects, getProspectCounts, deleteProspect, updateProspectStatus, markProspectContacted,
   findProspectByEmail,
   addSuppression, isSuppressed, listSuppressions,
   createCampaign, getCampaignById, getCampaigns, updateCampaignStatus,
