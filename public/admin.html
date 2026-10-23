@@ -41,9 +41,26 @@
     .banner { display: none; background: #7f1d1d; border: 1px solid #ef4444; color: #fecaca; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; }
     a { color: #38bdf8; }
     .small { font-size: 12px; color: #94a3b8; }
+    .login-overlay { display: none; position: fixed; inset: 0; background: rgba(2, 6, 23, 0.94); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
+    .login-card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 24px; width: 100%; max-width: 360px; box-sizing: border-box; margin: 0; }
+    .login-card h2 { color: #38bdf8; margin: 0 0 6px; font-size: 20px; }
+    .login-card input { width: 100%; box-sizing: border-box; margin: 12px 0; }
+    .login-card button { width: 100%; }
+    .login-note { display: none; color: #f87171; font-size: 13px; margin-top: 10px; }
   </style>
 </head>
 <body>
+  <!-- Login overlay: inline admin-token entry (replaces the old native prompt) -->
+  <div class="login-overlay" id="loginOverlay">
+    <form class="login-card" id="loginForm">
+      <h2>CrewMind Admin</h2>
+      <p class="sub" style="margin-bottom:0;">Enter the admin token (ADMIN_TOKEN) to open the console.</p>
+      <div class="login-note" id="loginNote"></div>
+      <input type="password" id="loginToken" placeholder="Admin token" autocomplete="current-password">
+      <button type="submit">Sign in</button>
+    </form>
+  </div>
+
   <div class="container">
     <div class="row" style="justify-content: space-between;">
       <div>
@@ -262,17 +279,36 @@
     const TOKEN_KEY = 'cm_admin_token';
 
     function getToken() {
-      let t = sessionStorage.getItem(TOKEN_KEY);
-      if (!t) {
-        t = prompt('Enter the admin token (ADMIN_TOKEN):');
-        if (t) sessionStorage.setItem(TOKEN_KEY, t);
-      }
-      return t;
+      return sessionStorage.getItem(TOKEN_KEY);
     }
+
+    function showLogin(note) {
+      const noteEl = document.getElementById('loginNote');
+      if (note) { noteEl.textContent = note; noteEl.style.display = 'block'; }
+      else { noteEl.textContent = ''; noteEl.style.display = 'none'; }
+      document.getElementById('loginOverlay').style.display = 'flex';
+      const input = document.getElementById('loginToken');
+      input.value = '';
+      setTimeout(() => input.focus(), 50);
+    }
+
+    function hideLogin() {
+      document.getElementById('loginOverlay').style.display = 'none';
+    }
+
     function changeToken() {
       sessionStorage.removeItem(TOKEN_KEY);
-      location.reload();
+      showLogin();
     }
+
+    document.getElementById('loginForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      const t = document.getElementById('loginToken').value.trim();
+      if (!t) return;
+      sessionStorage.setItem(TOKEN_KEY, t);
+      hideLogin();
+      initLoads();
+    });
 
     async function api(path, options = {}) {
       const token = getToken();
@@ -290,7 +326,8 @@
       }
       if (res.status === 401) {
         sessionStorage.removeItem(TOKEN_KEY);
-        throw new Error('Unauthorized — token rejected. Reload to enter a new token.');
+        showLogin('That token was rejected — enter the admin token to continue.');
+        throw new Error('Unauthorized — token rejected.');
       }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || ('Request failed: ' + res.status));
@@ -643,8 +680,11 @@
       } catch (e) { setMsg('tenantsMsg', e.message, 'err'); }
     }
 
-    // Init
-    loadStats(); loadTenants(); loadLeads(); loadAppointments(); loadPricing(); loadSettings(); loadContracts(); loadProspects(); loadCampaigns();
+    // Init — with a stored token, load everything; without one, show the login form.
+    function initLoads() {
+      loadStats(); loadTenants(); loadLeads(); loadAppointments(); loadPricing(); loadSettings(); loadContracts(); loadProspects(); loadCampaigns();
+    }
+    if (getToken()) { initLoads(); } else { showLogin(); }
   </script>
 <script>
   if ('serviceWorker' in navigator) {
