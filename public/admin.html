@@ -203,6 +203,56 @@
       <p class="msg" id="settingsMsg"></p>
     </div>
 
+    <!-- Phone module (Phase 10): personal/business call routing -->
+    <div class="card" id="phoneCard">
+      <h3>Phone — personal call routing</h3>
+      <p class="small">CrewMind answers on your CrewMind number. Personal contacts ring your cell straight through — no menu, no AI. Unknown callers get the virtual-assistant greeting and can say &ldquo;personal&rdquo; or press 2 to reach you; if you don&rsquo;t answer, the call becomes a recorded, transcribed message below. (Webhooks go live once Twilio credentials are set on the server.)</p>
+      <div class="row">
+        <label style="flex:1; min-width:200px;">CrewMind number (the number customers dial)
+          <input type="text" id="phoneNumber" placeholder="+1 817 555 0100" style="width:100%; margin-top:4px;">
+        </label>
+        <label style="flex:1; min-width:200px;">Your cell (ring-through target)
+          <input type="text" id="phoneOwnerNumber" placeholder="+1 940 555 0100" style="width:100%; margin-top:4px;">
+        </label>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <label style="flex:1; min-width:200px;">Business name spoken in the greeting
+          <input type="text" id="phoneGreetingName" placeholder="e.g. H&amp;M General Contractors" style="width:100%; margin-top:4px;">
+        </label>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <label><input type="checkbox" id="phoneEnabled"> Phone answering on</label>
+        <label><input type="checkbox" id="phoneAfterHours"> After-hours mode</label>
+        <button onclick="savePhoneSettings()">Save phone settings</button>
+      </div>
+      <p class="msg" id="phoneMsg"></p>
+
+      <h4 style="margin:18px 0 6px;">Ring-through mode</h4>
+      <div class="row">
+        <span class="small" id="ringthroughStatus">Off</span>
+        <button class="secondary" onclick="setRingthrough()">Ring-through for 30 minutes</button>
+        <button class="secondary" onclick="clearRingthrough()">Turn off</button>
+      </div>
+      <p class="small">Expecting a personal call? Ring-through mode sends EVERY call straight to your cell for 30 minutes — no greeting, no sort.</p>
+
+      <h4 style="margin:18px 0 6px;">Personal contacts — always ring straight through</h4>
+      <div class="row">
+        <input type="text" id="contactName" placeholder="Name (e.g. Mom)" style="flex:1; min-width:160px;">
+        <input type="text" id="contactPhone" placeholder="Phone (e.g. 940 555 0100)" style="flex:1; min-width:160px;">
+        <button onclick="addPhoneContact()">Add contact</button>
+      </div>
+      <table>
+        <thead><tr><th>Name</th><th>Phone</th><th></th></tr></thead>
+        <tbody id="phoneContactsBody"><tr><td colspan="3" class="small">Loading…</td></tr></tbody>
+      </table>
+
+      <h4 style="margin:18px 0 6px;">Recent calls</h4>
+      <table>
+        <thead><tr><th>When</th><th>From</th><th>Route</th><th>Message</th></tr></thead>
+        <tbody id="phoneCallsBody"><tr><td colspan="4" class="small">No calls yet.</td></tr></tbody>
+      </table>
+    </div>
+
     <!-- Availability -->
     <div class="card">
       <h3>Booking availability</h3>
@@ -734,9 +784,110 @@
       } catch (e) { setMsg('tenantsMsg', e.message, 'err'); }
     }
 
+    // -- Phone module (Phase 10) ------------------------------------------------
+
+    const ROUTE_LABELS = {
+      whitelist_ringthrough: 'Personal — rang through',
+      toggle_ringthrough: 'Ring-through mode — rang through',
+      sort_business: 'Business — message capture',
+      sort_personal: 'Personal (sort) — rang through',
+      capture: 'No answer — message captured',
+    };
+
+    function renderPhoneSettings(s) {
+      document.getElementById('phoneNumber').value = s.phone_number || '';
+      document.getElementById('phoneOwnerNumber').value = s.owner_number || '';
+      document.getElementById('phoneGreetingName').value = s.greeting_name || '';
+      document.getElementById('phoneEnabled').checked = !!s.enabled;
+      document.getElementById('phoneAfterHours').checked = !!s.after_hours;
+      document.getElementById('ringthroughStatus').textContent = s.ringthrough_active
+        ? 'ON — every call rings your cell until ' + new Date(s.ringthrough_until).toLocaleTimeString()
+        : 'Off';
+    }
+
+    async function loadPhone() {
+      try {
+        const { settings, contacts, calls } = await api('/api/admin/phone');
+        renderPhoneSettings(settings);
+        document.getElementById('phoneContactsBody').innerHTML = contacts.length ? contacts.map(c => `<tr>
+          <td><strong>${esc(c.name)}</strong></td>
+          <td>${esc(c.phone_e164)}</td>
+          <td><button class="secondary" title="Delete this contact" onclick="deletePhoneContact(${c.id}, this)">×</button></td>
+        </tr>`).join('') : '<tr><td colspan="3" class="small">No personal contacts yet — add family and friends so they never hit the greeting.</td></tr>';
+        document.getElementById('phoneCallsBody').innerHTML = calls.length ? calls.map(c => `<tr>
+          <td class="small">${new Date(c.created_at).toLocaleString()}</td>
+          <td>${esc(c.from_number || '—')}</td>
+          <td>${esc(ROUTE_LABELS[c.route_taken] || c.route_taken || '')}</td>
+          <td class="small">${c.recording_url ? `<a href="${esc(c.recording_url)}" target="_blank" rel="noopener">Recording</a>` : ''}${c.transcription ? `<br>${esc(c.transcription)}` : ''}${!c.recording_url && !c.transcription ? '—' : ''}</td>
+        </tr>`).join('') : '<tr><td colspan="4" class="small">No calls yet.</td></tr>';
+      } catch (e) { /* panel stays quiet on load errors */ }
+    }
+
+    async function savePhoneSettings() {
+      try {
+        const { settings } = await api('/api/admin/phone/settings', { method: 'PATCH', body: JSON.stringify({
+          enabled: document.getElementById('phoneEnabled').checked,
+          after_hours: document.getElementById('phoneAfterHours').checked,
+          greeting_name: document.getElementById('phoneGreetingName').value,
+          owner_number: document.getElementById('phoneOwnerNumber').value,
+          phone_number: document.getElementById('phoneNumber').value,
+        }) });
+        renderPhoneSettings(settings);
+        setMsg('phoneMsg', 'Phone settings saved.', 'ok');
+      } catch (e) { setMsg('phoneMsg', e.message, 'err'); }
+    }
+
+    async function setRingthrough() {
+      try {
+        const { settings } = await api('/api/admin/phone/ringthrough', { method: 'POST', body: '{}' });
+        renderPhoneSettings(settings);
+        setMsg('phoneMsg', 'Ring-through mode ON for 30 minutes — every call goes straight to your cell.', 'ok');
+      } catch (e) { setMsg('phoneMsg', e.message, 'err'); }
+    }
+
+    async function clearRingthrough() {
+      try {
+        const { settings } = await api('/api/admin/phone/ringthrough', { method: 'DELETE' });
+        renderPhoneSettings(settings);
+        setMsg('phoneMsg', 'Ring-through mode off.', 'ok');
+      } catch (e) { setMsg('phoneMsg', e.message, 'err'); }
+    }
+
+    async function addPhoneContact() {
+      const name = document.getElementById('contactName').value.trim();
+      const phone = document.getElementById('contactPhone').value.trim();
+      if (!name || !phone) { setMsg('phoneMsg', 'Contact name and phone are both required.', 'warn'); return; }
+      try {
+        await api('/api/admin/phone/contacts', { method: 'POST', body: JSON.stringify({ name, phone }) });
+        document.getElementById('contactName').value = '';
+        document.getElementById('contactPhone').value = '';
+        setMsg('phoneMsg', 'Contact added — they will ring straight through.', 'ok');
+        loadPhone();
+      } catch (e) { setMsg('phoneMsg', e.message, 'err'); }
+    }
+
+    // Two-tap inline confirm — deliberately NOT window.confirm():
+    // native confirm dialogs can't be dismissed by browser automation
+    // (the same trap as the old prospect delete). First tap arms the
+    // button for 3 seconds; the second tap actually deletes.
+    function deletePhoneContact(id, btn) {
+      if (btn.dataset.armed) {
+        delete btn.dataset.armed;
+        api('/api/admin/phone/contacts/' + id, { method: 'DELETE' })
+          .then(() => { setMsg('phoneMsg', 'Contact removed.', 'ok'); loadPhone(); })
+          .catch(e => setMsg('phoneMsg', e.message, 'err'));
+        return;
+      }
+      btn.dataset.armed = '1';
+      const original = btn.textContent;
+      btn.textContent = 'Tap again to delete';
+      btn.style.background = '#991b1b';
+      setTimeout(() => { delete btn.dataset.armed; btn.textContent = original; btn.style.background = ''; }, 3000);
+    }
+
     // Init — with a stored token, load everything; without one, show the login form.
     function initLoads() {
-      loadStats(); loadTenants(); loadLeads(); loadAppointments(); loadPricing(); loadSettings(); loadContracts(); loadProspects(); loadCampaigns();
+      loadStats(); loadTenants(); loadLeads(); loadAppointments(); loadPricing(); loadSettings(); loadContracts(); loadProspects(); loadCampaigns(); loadPhone();
       startScrapePolling(); // resume progress display if a scrape job is mid-run
     }
     if (getToken()) { initLoads(); } else { showLogin(); }

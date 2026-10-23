@@ -19,6 +19,8 @@ const { getPricingRules, updatePricingRule } = require('../db/quotes');
 const { getUpcomingAppointments, ensureUpcomingSlots } = require('../db/appointments');
 const { getAllSettings, setSetting } = require('../db/settings');
 const { listTenants, getTenantById, setTenantComp, effectiveStatus } = require('../db/tenants');
+const phoneDb = require('../db/phone');
+const { normalizePhone } = require('../lib/phone-routing');
 
 // Settings the admin console may read/write. Values are stored as text in
 // app_settings; deposit_percent is exposed as a number.
@@ -247,6 +249,129 @@ router.post('/tenants/:id/uncomp', async (req, res) => {
     res.json({ tenant: adminTenantView(updated) });
   } catch (err) {
     console.error('[admin] comp revoke error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * -- Phone module (Phase 10) ------------------------------------------------
+ * Operator-console management for the tenant-1 phone routing: settings,
+ * the personal pass-through list, the ring-through toggle, and the
+ * recent call log. The webhooks themselves live in routes/phone.js and
+ * stay inert until Twilio env vars are set on the server.
+ */
+
+function phoneSettingsView(s) {
+  const until = s.ringThroughUntil ? new Date(s.ringThroughUntil) : null;
+  return {
+    enabled: !!s.enabled,
+    owner_number: s.ownerNumber || '',
+    greeting_name: s.greetingName || '',
+    phone_number: s.phoneNumber || '',
+    after_hours: !!s.afterHours,
+    ringthrough_until: s.ringThroughUntil || null,
+    ringthrough_active: !!(until && !Number.isNaN(until.getTime()) && until.getTime() > Date.now()),
+  };
+}
+
+/**
+ * GET /api/admin/phone
+ * Everything the console Phone section needs in one read.
+ */
+router.get('/phone', async (req, res) => {
+  try {
+    const [settings, contacts, calls] = await Promise.all([
+      phoneDb.getPhoneSettings(1),
+      phoneDb.listPersonalContacts(1),
+      phoneDb.listCallLog(1, 25),
+    ]);
+    res.json({ settings: phoneSettingsView(settings), contacts, calls });
+  } catch (err) {
+    console.error('[admin] phone read error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * PATCH /api/admin/phone/settings
+ * Update phone settings. Phone numbers are stored normalized (E.164);
+ * a non-empty number that can't be normalized is a 400.
+ */
+router.patch('/phone/settings', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const patch = {};
+    if (body.enabled !== undefined) patch.enabled = !!body.enabled;
+    if (body.after_hours !== undefined) patch.afterHours = !!body.after_hours;
+    if (body.greeting_name !== undefined) patch.greetingName = String(body.greeting_name).trim();
+    for (const [field, key] of [['owner_number', 'ownerNumber'], ['phone_number', 'phoneNumber']]) {
+      if (body[field] !== undefined) {
+        const raw = String(body[field]).trim();
+        if (raw && !normalizePhone(raw)) {
+          return res.status(400).json({ error: `${field} doesn't look like a valid phone number.` });
+        }
+        patch[key] = raw;
+      }
+    }
+    const settings = await phoneDb.updatePhoneSettings(1, patch);
+    res.json({ settings: phoneSettingsView(settings) });
+  } catch (err) {
+    console.error('[admin] phone settings update error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/admin/phone/ringthrough
+ * Flip the line to ring-through mode for 30 minutes (owner is
+ * expecting a personal call — every call rings them directly).
+ */
+router.post('/phone/ringthrough', async (req, res) => {
+  try {
+    const until = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const settings = await phoneDb.updatePhoneSettings(1, { ringThroughUntil: until });
+    res.json({ settings: phoneSettingsView(settings) });
+  } catch (err) {
+    console.error('[admin] phone ringthrough set error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/** DELETE /api/admin/phone/ringthrough — turn ring-through mode off now. */
+router.delete('/phone/ringthrough', async (req, res) => {
+  try {
+    const settings = await phoneDb.updatePhoneSettings(1, { ringThroughUntil: null });
+    res.json({ settings: phoneSettingsView(settings) });
+  } catch (err) {
+    console.error('[admin] phone ringthrough clear error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/** POST /api/admin/phone/contacts — add a personal pass-through contact. */
+router.post('/phone/contacts', async (req, res) => {
+  try {
+    const name = String((req.body || {}).name || '').trim();
+    const phoneE164 = normalizePhone((req.body || {}).phone);
+    if (!name) return res.status(400).json({ error: 'A name is required.' });
+    if (!phoneE164) return res.status(400).json({ error: "That phone number doesn't look valid." });
+    const contact = await phoneDb.addPersonalContact(1, { name, phoneE164 });
+    res.json({ contact });
+  } catch (err) {
+    console.error('[admin] phone contact add error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/** DELETE /api/admin/phone/contacts/:id */
+router.delete('/phone/contacts/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const removed = Number.isNaN(id) ? false : await phoneDb.deletePersonalContact(1, id);
+    if (!removed) return res.status(404).json({ error: 'Contact not found.' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[admin] phone contact delete error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

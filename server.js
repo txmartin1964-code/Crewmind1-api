@@ -79,6 +79,10 @@ app.use('/api/payments', paymentsRoutes);
 app.use('/api/contracts', contractRoutes.publicRouter);
 app.use('/api/change-orders', require('./routes/change-orders'));
 app.use('/api/reviews', require('./routes/reviews'));
+// Phone webhooks (Phase 10): called by Twilio, NOT admin-token gated —
+// they gate themselves (503 until Twilio env is set, then Twilio
+// signature validation). See routes/phone.js.
+app.use('/api/phone', require('./routes/phone'));
 app.use('/api/admin/contracts', contractRoutes.adminRouter);
 const gtmRoutes = require('./routes/gtm');
 app.use('/api/admin', gtmRoutes.adminRouter);
