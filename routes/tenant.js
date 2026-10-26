@@ -24,7 +24,7 @@ const { getContracts } = require('../db/contracts');
 const { getAllSettings, setSetting } = require('../db/settings');
 const { checkCap, getUsageSummary } = require('../services/usage');
 const { recordUsage } = require('../db/usage');
-const { saveScrapedLeads } = require('../db/scraped-leads');
+const { saveScrapedLeads, getScrapedLeadsByTenant } = require('../db/scraped-leads');
 const { getLeadById } = require('../db/leads');
 const { getQuoteByLeadId, getQuoteById } = require('../db/quotes');
 const jobsDb = require('../db/jobs');
@@ -460,6 +460,23 @@ router.get('/usage', async (req, res) => {
     res.json({ usage: await getUsageSummary(req.tenant) });
   } catch (err) {
     console.error('[tenant] usage error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/tenant/scraped-leads — this tenant's saved scraped prospects,
+ * newest first. The console's Find customers list reads from here.
+ */
+router.get('/scraped-leads', async (req, res) => {
+  try {
+    const prospects = await getScrapedLeadsByTenant(
+      req.tenantId,
+      parseInt(req.query.limit, 10) || 100
+    );
+    res.json({ prospects });
+  } catch (err) {
+    console.error('[tenant] scraped-leads error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

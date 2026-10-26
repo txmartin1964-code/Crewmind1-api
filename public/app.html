@@ -88,6 +88,23 @@
     <tbody id="leadsBody"><tr><td class="muted">Loading…</td></tr></tbody></table>
   </div>
 
+  <h2>Find customers</h2>
+  <div class="card">
+    <form id="scrapeForm">
+      <div class="grid">
+        <div><label>Service to search for</label><input id="scrapeService" placeholder="e.g. roof repair"></div>
+        <div><label>Area</label><input id="scrapeArea" placeholder="e.g. Fort Worth TX"></div>
+        <div><label>ZIP (optional)</label><input id="scrapeZip" placeholder="e.g. 76102"></div>
+      </div>
+      <p class="muted">Searches local businesses that could hire you and saves them in the list below. Counts against your monthly prospect allowance. A search can take a minute or so.</p>
+      <button class="btn" type="submit" id="scrapeBtn">Find customers</button>
+    </form>
+  </div>
+  <div class="card" style="overflow-x:auto;">
+    <table><thead><tr><th>Business</th><th>Phone</th><th>Website / Email</th><th>Search</th><th>Found</th></tr></thead>
+    <tbody id="prospectsBody"><tr><td class="muted">Loading…</td></tr></tbody></table>
+  </div>
+
   <h2>Upcoming appointments</h2>
   <div class="card" style="overflow-x:auto;">
     <table><thead><tr><th>When</th><th>Customer</th><th>Job</th><th>Confirmation</th></tr></thead>
@@ -180,6 +197,44 @@ async function api(path, opts = {}) {
 }
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function loadProspects() {
+  try {
+    const data = await api('/api/tenant/scraped-leads?limit=100');
+    $('prospectsBody').innerHTML = data.prospects.length ? data.prospects.map(p =>
+      '<tr><td>' + esc(p.name) + '</td><td>' + esc(p.phone || '—') + '</td><td>' +
+      (p.website ? '<a href="' + esc(p.website) + '" target="_blank" rel="noopener">Website</a>' : '') +
+      (p.website && p.email ? '<br>' : '') + esc(p.email || '') +
+      '</td><td class="muted">' + esc(p.query) + '</td><td class="muted">' +
+      new Date(p.created_at).toLocaleDateString() + '</td></tr>').join('')
+      : '<tr><td class="muted">No prospects yet — run a search above to find businesses that could hire you.</td></tr>';
+  } catch (e) {
+    $('prospectsBody').innerHTML = '<tr><td class="muted">Could not load prospects.</td></tr>';
+  }
+}
+
+async function runTenantScrape(ev) {
+  ev.preventDefault();
+  const targetService = $('scrapeService').value.trim();
+  const targetArea = $('scrapeArea').value.trim();
+  const targetZip = $('scrapeZip').value.trim();
+  if (!targetService || !targetArea) { alert('Enter a service and an area first.'); return; }
+  const btn = $('scrapeBtn');
+  btn.disabled = true;
+  btn.textContent = 'Searching… this can take a minute';
+  try {
+    const data = await api('/api/tenant/scrape', { method: 'POST', body: JSON.stringify({ targetService, targetArea, targetZip: targetZip || undefined }) });
+    alert('Found ' + data.total_found + ' businesses — ' + data.saved + ' new saved to your list' + (data.skipped_duplicates ? ' (' + data.skipped_duplicates + ' were already on it).' : '.'));
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Find customers';
+    // Reload either way: a scrape that errored at the HTTP layer may
+    // still have saved results server-side.
+    await loadProspects();
+  }
+}
 const money = (c) => '$' + (Number(c || 0) / 100).toFixed(2);
 
 $('loginForm').addEventListener('submit', async (e) => {
@@ -272,6 +327,9 @@ async function loadConsole() {
     esc(l.qualification_status || l.status) + '</td><td>' + (l.ai_score ?? '—') + '</td><td class="muted">' +
     new Date(l.created_at).toLocaleDateString() + '</td></tr>').join('')
     : '<tr><td class="muted">No leads yet — share your quote page link to get the first one.</td></tr>';
+
+  await loadProspects();
+  $('scrapeForm').addEventListener('submit', runTenantScrape);
 
   const appts = await api('/api/tenant/appointments');
   $('apptsBody').innerHTML = appts.appointments.length ? appts.appointments.map(a =>

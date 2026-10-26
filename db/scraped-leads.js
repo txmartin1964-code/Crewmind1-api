@@ -75,6 +75,19 @@ async function saveScrapedLeads(leads, { query, source, tenantId = 1 } = {}) {
   return { saved, duplicates };
 }
 
+/** This tenant's saved scraped prospects, newest first. */
+async function getScrapedLeadsByTenant(tenantId, limit = 100) {
+  const result = await pool.query(
+    `SELECT id, name, phone, website, email, query, source, created_at
+       FROM scraped_leads
+      WHERE tenant_id = $1
+      ORDER BY created_at DESC, id DESC
+      LIMIT $2`,
+    [tenantId, limit]
+  );
+  return result.rows;
+}
+
 /** Single-lead convenience wrapper — background scrape jobs (v4) save
  *  incrementally, one lead at a time, as the crawl produces them. */
 async function saveScrapedLead(lead, opts) {
@@ -86,4 +99,4 @@ async function getScrapedLeadById(id) {
   return result.rows[0] || null;
 }
 
-module.exports = { saveScrapedLeads, saveScrapedLead, getScrapedLeadById };
+module.exports = { saveScrapedLeads, saveScrapedLead, getScrapedLeadById, getScrapedLeadsByTenant };
