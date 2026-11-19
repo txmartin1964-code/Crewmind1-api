@@ -227,6 +227,25 @@ Either way, thank you.<br><br>
   return sendEmail({ to: lead.email, subject, body, html });
 }
 
+/**
+ * Sends a tenant their password-reset link (forgot-password flow).
+ * The link carries the RAW token — the DB only stores its hash — and
+ * expires 1 hour after it was requested. Single-use.
+ */
+async function sendPasswordResetEmail(to, resetUrl) {
+  const subject = `Reset your CrewMind password`;
+  const body = `Hi,\n\nWe received a request to reset the password for your CrewMind account.\n\nReset your password here (link expires in 1 hour and can only be used once):\n${resetUrl}\n\nIf you didn't request this, you can ignore this email — your password won't change.\n\n— CrewMind`;
+  const html = `
+Hi,<br><br>
+We received a request to reset the password for your CrewMind account.<br><br>
+<a href="${resetUrl}" style="display:inline-block;padding:12px 20px;background:#ffb347;color:#1a1206;border-radius:8px;text-decoration:none;font-weight:700;">Reset your password →</a><br><br>
+This link expires in 1 hour and can only be used once.<br><br>
+If you didn't request this, you can ignore this email — your password won't change.<br><br>
+— CrewMind
+`;
+  return sendEmail({ to, subject, body, html });
+}
+
 /** Thank-you sent after a customer submits private feedback. */
 async function sendFeedbackThanks(lead, businessName) {
   const from = businessName || 'CrewMind';
@@ -236,4 +255,4 @@ async function sendFeedbackThanks(lead, businessName) {
   return sendEmail({ to: lead.email, subject, body, html });
 }
 
-module.exports = { sendEmail, sendLeadAck, sendQuoteWithBookingLink, sendAppointmentConfirmation, sendContractLink, sendFinalInvoice, sendReviewRequest, sendFeedbackThanks, sendChangeOrderLink };
+module.exports = { sendEmail, sendLeadAck, sendQuoteWithBookingLink, sendAppointmentConfirmation, sendContractLink, sendFinalInvoice, sendReviewRequest, sendFeedbackThanks, sendChangeOrderLink, sendPasswordResetEmail };
