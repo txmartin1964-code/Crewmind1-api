@@ -85,7 +85,7 @@
         <h3 style="margin:0;">Tenants</h3>
         <button onclick="loadTenants()">Refresh</button>
       </div>
-      <p class="small">Every CrewMind account. <strong>Grant lifetime</strong> gives a free-forever comp: the account is active immediately and stays active regardless of trial or billing. The comp is an overlay — revoking it restores the account's real trial/subscription state, and usage caps still apply while comped.</p>
+      <p class="small">Every CrewMind account. <strong>Grant lifetime</strong> gives a free-forever comp: the account is active immediately and stays active regardless of trial or billing. The comp is an overlay — revoking it restores the account's real trial/subscription state, and usage caps still apply while comped. <strong>Set app login</strong> sets the email + password an account uses to log in at <a href="/app" target="_blank">/app</a> — for the operator row, that's how you give your own business an app login.</p>
       <div style="overflow-x:auto;">
       <table>
         <thead>
@@ -745,12 +745,26 @@
       return `<span class="badge ${map[t.effective_status] || 'gray'}">${esc(t.effective_status || 'unknown')}</span>`;
     }
 
+    let tenantsCache = [];
+    let appLoginOpenFor = null; // tenant id whose "Set app login" form is open
+
     async function loadTenants() {
       try {
         const { tenants } = await api('/api/admin/tenants');
-        const body = document.getElementById('tenantsBody');
-        if (!tenants.length) { body.innerHTML = '<tr><td colspan="8" class="small">No tenants yet.</td></tr>'; return; }
-        body.innerHTML = tenants.map(t => `<tr>
+        tenantsCache = tenants;
+        renderTenants();
+        setMsg('tenantsMsg', '');
+      } catch (e) { setMsg('tenantsMsg', e.message, 'err'); }
+    }
+
+    function renderTenants() {
+      const body = document.getElementById('tenantsBody');
+      if (!tenantsCache.length) { body.innerHTML = '<tr><td colspan="8" class="small">No tenants yet.</td></tr>'; return; }
+      body.innerHTML = tenantsCache.map(t => {
+        const compBtn = t.is_operator ? '' : (t.is_comped
+          ? `<button class="secondary" onclick="revokeComp(${t.id})">Revoke comp</button>`
+          : `<button onclick="grantComp(${t.id})">Grant lifetime</button>`);
+        let html = `<tr>
           <td>${t.id}</td>
           <td><strong>${esc(t.business_name || '')}</strong>${t.is_operator ? '<br><span class="badge gray">operator</span>' : ''}</td>
           <td>${esc(t.email || '')}</td>
@@ -758,12 +772,46 @@
           <td>${esc(t.status || '')}</td>
           <td>${t.founding_cohort ? 'founding #' + esc(t.cohort_number ?? '') : '<span class="small">—</span>'}</td>
           <td>${t.is_comped ? `<span class="ok">since ${new Date(t.comped_at).toLocaleDateString('en-US')}</span>` : '<span class="small">—</span>'}</td>
-          <td>${t.is_operator ? '<span class="small">—</span>' : (t.is_comped
-            ? `<button class="secondary" onclick="revokeComp(${t.id})">Revoke comp</button>`
-            : `<button onclick="grantComp(${t.id})">Grant lifetime</button>`)}</td>
-        </tr>`).join('');
-        setMsg('tenantsMsg', '');
+          <td>${compBtn}${compBtn ? '<br>' : ''}<button class="secondary" onclick="toggleAppLogin(${t.id})">Set app login</button></td>
+        </tr>`;
+        if (appLoginOpenFor === t.id) {
+          html += `<tr><td colspan="8">
+            <form onsubmit="return submitAppLogin(event, ${t.id})">
+              <div class="row">
+                <input type="email" id="appLoginEmail-${t.id}" value="${esc(t.email || '')}" placeholder="Login email" autocomplete="username">
+                <input type="password" id="appLoginPw-${t.id}" placeholder="New password (8+ characters)" autocomplete="new-password">
+                <input type="password" id="appLoginPw2-${t.id}" placeholder="Confirm password" autocomplete="new-password">
+                <button type="submit">Save app login</button>
+                <button type="button" class="secondary" onclick="toggleAppLogin(${t.id})">Cancel</button>
+              </div>
+              <p class="small" style="margin:8px 0 0;">Sets the email + password this account uses to log in at /app.</p>
+            </form>
+          </td></tr>`;
+        }
+        return html;
+      }).join('');
+    }
+
+    function toggleAppLogin(id) {
+      appLoginOpenFor = appLoginOpenFor === id ? null : id;
+      renderTenants();
+    }
+
+    async function submitAppLogin(event, id) {
+      event.preventDefault();
+      const email = document.getElementById('appLoginEmail-' + id).value;
+      const pw = document.getElementById('appLoginPw-' + id).value;
+      const pw2 = document.getElementById('appLoginPw2-' + id).value;
+      if (pw !== pw2) { setMsg('tenantsMsg', 'Passwords don\'t match.', 'err'); return false; }
+      try {
+        await api('/api/admin/tenants/' + id + '/app-login', { method: 'POST', body: JSON.stringify({ email, password: pw }) });
+        appLoginOpenFor = null;
+        await loadTenants(); // clears tenantsMsg on success — set the confirmation after it
+        if (!document.getElementById('tenantsMsg').classList.contains('err')) {
+          setMsg('tenantsMsg', 'App login set — they can now log in at /app', 'ok');
+        }
       } catch (e) { setMsg('tenantsMsg', e.message, 'err'); }
+      return false;
     }
 
     async function grantComp(id) {

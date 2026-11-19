@@ -18,7 +18,9 @@ const { getLeads, countLeads } = require('../db/leads');
 const { getPricingRules, updatePricingRule } = require('../db/quotes');
 const { getUpcomingAppointments, ensureUpcomingSlots } = require('../db/appointments');
 const { getAllSettings, setSetting } = require('../db/settings');
-const { listTenants, getTenantById, setTenantComp, effectiveStatus } = require('../db/tenants');
+const { listTenants, getTenantById, getTenantByEmail, updateTenant, setTenantComp, effectiveStatus } = require('../db/tenants');
+const { hashPassword } = require('../lib/auth');
+const { validateAppLoginRequest, emailConflict, EMAIL_IN_USE_MESSAGE } = require('../lib/app-login');
 const phoneDb = require('../db/phone');
 const { normalizePhone } = require('../lib/phone-routing');
 
@@ -249,6 +251,38 @@ router.post('/tenants/:id/uncomp', async (req, res) => {
     res.json({ tenant: adminTenantView(updated) });
   } catch (err) {
     console.error('[admin] comp revoke error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/admin/tenants/:id/app-login { email, password }
+ * Set (or reset) a tenant's /app login credentials. This is how the
+ * operator tenant (#1) — seeded with no email/password — gets an app
+ * login for its own business data; it works for any tenant row.
+ * Validation lives in lib/app-login.js; the email must not belong to a
+ * DIFFERENT tenant (409), and the password follows the shared 8+
+ * character rule. Only the bcrypt hash is stored; the response is the
+ * usual hash-free adminTenantView.
+ */
+router.post('/tenants/:id/app-login', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const tenant = Number.isNaN(id) ? null : await getTenantById(id);
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found.' });
+    const { email, password, error } = validateAppLoginRequest(req.body);
+    if (error) return res.status(400).json({ error });
+    const existing = await getTenantByEmail(email);
+    if (emailConflict(existing, tenant.id)) {
+      return res.status(409).json({ error: EMAIL_IN_USE_MESSAGE });
+    }
+    const updated = await updateTenant(tenant.id, {
+      email,
+      password_hash: await hashPassword(password),
+    });
+    res.json({ tenant: adminTenantView(updated) });
+  } catch (err) {
+    console.error('[admin] app-login set error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
